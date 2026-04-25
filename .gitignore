@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Environment
+.env
+.env.local
+
+# Data & Models
+data/scenarios/*.tif
+data/scenarios/*.tiff
+data/scenarios/*.png
+data/scenarios/*.jpg
+data/region_db/*.db
+data/region_db/*.sqlite
+models/*
+!models/.gitkeep
+
+# Gradio
+flagged/
+gradio_cached_examples/
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# uv
+uv.lock
+
+# OS
+.DS_Store
+Thumbs.db

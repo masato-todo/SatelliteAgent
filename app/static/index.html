@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SatelliteAgent — Mission Control</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/static/app.css?v=2026042506">
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>SatelliteAgent</h1>
+    <p>Onboard LFM2-VL agent for Earth observation downlink optimization.</p>
+  </div>
+  <div id="simsat-info">
+    <div>SimSat: <span id="simsat-url">–</span></div>
+    <div>Agent: <span id="provider-info" class="provider-stub">–</span></div>
+  </div>
+</header>
+
+<main>
+  <!-- Left: Controls -->
+  <aside id="controls">
+    <h2>Location &amp; Dates</h2>
+
+    <label>
+      Search
+      <input id="geo-search" type="text"
+             placeholder='e.g. "Tokyo 2024/3" or "Park Fire CA"'>
+    </label>
+    <div id="geo-results"></div>
+
+    <label>
+      Template
+      <select id="template"></select>
+    </label>
+
+    <label>
+      DisasterM3 case (GT dataset)
+      <select id="dm3-case">
+        <option value="">— none —</option>
+      </select>
+    </label>
+    <div id="dm3-gt" class="dm3-gt"></div>
+
+    <div class="row">
+      <label>Latitude <input id="lat" type="number" step="0.0001" value="24.90"></label>
+      <label>Longitude <input id="lon" type="number" step="0.0001" value="91.87"></label>
+    </div>
+
+    <label>
+      Footprint: <span id="size_km_val">50</span> km
+      <input id="size_km" type="range" min="2" max="100" step="1" value="50">
+    </label>
+
+    <div class="row">
+      <label>Before <input id="before_date" type="text" value="2024-05-15" placeholder="YYYY-MM-DD"></label>
+      <label>After  <input id="after_date"  type="text" value="2024-08-20" placeholder="YYYY-MM-DD"></label>
+    </div>
+
+    <button id="before-cand-btn" style="width:100%; margin-bottom:8px;">Find clearer Before candidates</button>
+    <div id="before-candidates"></div>
+
+    <button id="after-cand-btn" style="width:100%; margin-bottom:8px;">Find clearer After candidates</button>
+    <div id="after-candidates"></div>
+
+    <label>
+      Search window: <span id="window_days_val">30</span> days
+      <input id="window_days" type="range" min="7" max="90" step="1" value="30">
+    </label>
+
+    <div class="buttons">
+      <button id="fetch-btn">Fetch Images</button>
+      <button id="run-btn" class="primary">Run Agent</button>
+    </div>
+
+    <div id="status"></div>
+
+    <h2 style="margin-top:20px">Downlink Budget</h2>
+    <div class="budget-bar"><div id="budget-fill"></div></div>
+    <div id="budget-text" class="muted">5,000,000 bytes remaining</div>
+  </aside>
+
+  <!-- Right: Maps + Trace + Inbox -->
+  <section id="workspace">
+
+    <div id="maps">
+      <div class="map-wrapper">
+        <div class="map-label">Before</div>
+        <div id="loading-before" class="map-loading"><div class="spinner"></div><span>Loading Sentinel-2...</span></div>
+        <div id="map-before" class="map"></div>
+      </div>
+      <div class="map-wrapper">
+        <div class="map-label">After</div>
+        <div id="loading-after" class="map-loading"><div class="spinner"></div><span>Loading Sentinel-2...</span></div>
+        <div id="map-after" class="map"></div>
+      </div>
+      <div class="maps-hint">
+        Wheel to zoom · Drag to pan · Maps sync
+        <label style="margin-left:12px">
+          <input id="toggle-damage" type="checkbox" checked> Show xBD damage polygons
+        </label>
+      </div>
+    </div>
+
+    <!-- Tool palette: always visible and operable -->
+    <div id="tools-panel">
+      <div class="a-section">
+        <div class="a-section-label">Evidence + Classify</div>
+        <div class="a-row">
+          <button class="tool-btn" data-tool="get_change_stats" title="Computes ALL spectral index deltas (NBR/NDVI/MNDWI/NDBI) and returns mean/median/std/min/max/percentiles + strong↓↑ fractions. Pure data — agent decides class.">get_change_stats</button>
+          <button class="tool-btn" data-tool="classify_change" title="VLM-based (Gemini interim → LFM2-VL FT): looks at Before/After RGB and reasons about the change.">classify_change (VLM)</button>
+          <button class="tool-btn" data-tool="get_region_info">get_region_info</button>
+        </div>
+      </div>
+
+      <div class="a-section">
+        <div class="a-section-label">Spectral (pick side, then a tool)</div>
+        <div class="a-row">
+          <label class="a-inline-label">Side
+            <select id="which-sel">
+              <option value="both" selected>both</option>
+              <option value="after">after</option>
+              <option value="before">before</option>
+            </select>
+          </label>
+          <span class="tool-inline">
+            <label>Band</label>
+            <select id="fetch-band-sel">
+              <option>coastal</option><option>blue</option><option>green</option>
+              <option>red</option><option>rededge1</option><option>rededge2</option>
+              <option>rededge3</option><option selected>nir</option>
+              <option>nir08</option><option>nir09</option>
+              <option>swir16</option><option>swir22</option>
+              <option>aot</option><option>scl</option>
+              <option>visual</option><option>wvp</option>
+            </select>
+            <button class="tool-btn" data-tool="fetch_band">fetch_band</button>
+          </span>
+          <span class="tool-inline">
+            <label>FCC preset</label>
+            <select id="fc-preset">
+              <option value="red,green,blue">Natural (RGB)</option>
+              <option value="nir,red,green" selected>Vegetation FCC</option>
+              <option value="swir22,nir,red">Burn severity</option>
+              <option value="swir16,nir,blue">Urban vs Veg</option>
+              <option value="swir22,swir16,red">Geology</option>
+              <option value="rededge1,red,green">Red-edge (stress)</option>
+            </select>
+            <button class="tool-btn" data-tool="false_color">false_color</button>
+          </span>
+          <span class="tool-inline">
+            <label>Index</label>
+            <select id="index-sel">
+              <option>NDVI</option><option>NDWI</option><option>MNDWI</option>
+              <option>NBR</option><option>NDBI</option><option>NDSI</option>
+            </select>
+            <button class="tool-btn" data-tool="compute_index">compute_index</button>
+            <button class="tool-btn" data-tool="compute_index_delta" title="After - Before heatmap on the After map. Red = decrease, Blue = increase">Δ delta</button>
+          </span>
+        </div>
+      </div>
+
+      <div class="a-row" style="margin-top:6px">
+        <button id="reset-maps-btn" title="Restore original Before/After RGB images (undo any compute_index / false_color / delta on the maps)">↺ Reset to original images</button>
+      </div>
+
+      <div id="tools-status" class="a-status"></div>
+    </div>
+
+    <!-- Saved traces browser modal -->
+    <div id="traces-modal" hidden>
+      <div class="modal-backdrop"></div>
+      <div class="modal-content traces-modal-content">
+        <div class="traces-header">
+          <h3>Saved Traces</h3>
+          <button id="traces-close-btn">✕</button>
+        </div>
+        <div class="traces-body">
+          <div id="traces-list"></div>
+          <div id="traces-detail">
+            <div class="traces-detail-empty">Select a trace on the left to view its contents.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Submit Report modal -->
+    <div id="submit-modal" hidden>
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <h3>Submit Report</h3>
+        <label>Change type
+          <input id="f-change-type" type="text" value="flood">
+        </label>
+        <label>Urgency (0-10)
+          <input id="f-urgency" type="number" min="0" max="10" value="5">
+        </label>
+        <label>Description
+          <textarea id="f-description" rows="4" placeholder="What changed, why it matters"></textarea>
+        </label>
+        <label class="inline">
+          <input id="f-attach" type="checkbox"> Attach full After image (~400 KB vs ~2 KB)
+        </label>
+        <div class="modal-buttons">
+          <button id="f-confirm" class="primary">Confirm Submit</button>
+          <button id="f-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- Right: Trace sidebar (kept out of #workspace so it doesn't squeeze the maps) -->
+  <aside id="trace-sidebar">
+    <div id="trace-panel">
+      <div class="panel-header">
+        <h2>ReAct Trace</h2>
+        <span id="mode-badge" class="mode-agent">AGENT</span>
+        <span class="ph-spacer"></span>
+        <button id="traces-list-btn" class="ph-action" title="View saved traces (read / delete)">📂 Traces</button>
+        <button id="annotate-btn" class="ph-action">● Start Recording</button>
+      </div>
+
+      <div id="annotate-controls" hidden>
+        <div class="a-row">
+          <label>Profile
+            <select id="annotate-profile">
+              <option value="default">default</option>
+              <option value="strict_populated">strict_populated</option>
+              <option value="lenient_monitor">lenient_monitor</option>
+              <option value="emergency_protocol">emergency_protocol</option>
+            </select>
+          </label>
+          <label>Scenario id
+            <input id="annotate-scenario" type="text" placeholder="(auto from template)">
+          </label>
+        </div>
+
+        <div class="a-row">
+          <label style="flex:1">Thought (optional — written before the next tool)
+            <textarea id="annotate-thought" rows="2" placeholder="e.g. suspicious bbox — let me zoom in"></textarea>
+          </label>
+        </div>
+
+        <div class="a-row" id="capture-row">
+          <button id="draw-bbox-btn" title="Mark a region of interest on the After map. Recorded as an attention event in the trace.">▢ Draw bbox on After</button>
+          <span id="bbox-display" class="bbox-display">— no bbox —</span>
+          <button id="clear-bbox-btn">Clear</button>
+        </div>
+
+        <div class="a-row terminal-row">
+          <button id="submit-btn" class="primary">Submit Report...</button>
+          <button id="drop-btn">Drop</button>
+          <span class="a-spacer"></span>
+          <button id="discard-trace-btn" title="Abandon this trace without saving — Stop Recording would otherwise auto-save it">Discard</button>
+        </div>
+
+        <div id="annotate-status" class="a-status"></div>
+      </div>
+
+      <div id="trace"></div>
+    </div>
+  </aside>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/app.js?v=2026042506"></script>
+</body>
+</html>
