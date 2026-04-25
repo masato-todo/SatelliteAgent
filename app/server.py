@@ -62,10 +62,15 @@ PROVIDER = _build_provider()
 
 APP_DIR = Path(__file__).parent
 STATIC_DIR = APP_DIR / "static"
-CACHE_DIR = APP_DIR.parent / "data" / "scenarios"
+# Cache directory is overridable so the same code can write to a network
+# mount (SSHFS / NFS / SMB) when training storage lives on a remote server.
+# Defaults to repo-local data/scenarios for development.
+CACHE_DIR = Path(os.environ.get("SAT_CACHE_DIR", APP_DIR.parent / "data" / "scenarios"))
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
-TRACES_DIR = APP_DIR.parent / "data" / "traces" / "human"
+TRACES_DIR = Path(os.environ.get("SAT_TRACES_DIR", APP_DIR.parent / "data" / "traces" / "human"))
 TRACES_DIR.mkdir(parents=True, exist_ok=True)
+print(f"[startup] CACHE_DIR = {CACHE_DIR}")
+print(f"[startup] TRACES_DIR = {TRACES_DIR}")
 
 
 def build_tool_registry(before_path: str, after_path: str,
@@ -138,8 +143,11 @@ def _normalize_ts(d: str) -> str:
     return s
 
 
-def _cache_key(lat: float, lon: float, ts: str, size_km: float) -> str:
-    return hashlib.md5(f"{lat:.4f}_{lon:.4f}_{ts}_{size_km}".encode()).hexdigest()[:10]
+def _cache_key(lat: float, lon: float, ts: str, size_km: float, resolution_meters: int = 10) -> str:
+    """Hash includes resolution so 10m and 30m caches don't collide."""
+    return hashlib.md5(
+        f"{lat:.4f}_{lon:.4f}_{ts}_{size_km}_r{resolution_meters}".encode()
+    ).hexdigest()[:10]
 
 
 def _meta_path(key: str) -> Path:
@@ -165,11 +173,12 @@ def _save_meta(key: str, meta: dict) -> None:
         pass  # non-fatal
 
 
-def _fetch_one(lat: float, lon: float, ts: str, size_km: float, window_days: int
-               ) -> tuple[str | None, dict[str, Any]]:
-    key = _cache_key(lat, lon, _normalize_ts(ts), size_km)
+def _fetch_one(lat: float, lon: float, ts: str, size_km: float, window_days: int,
+               resolution_meters: int = 10) -> tuple[str | None, dict[str, Any]]:
+    key = _cache_key(lat, lon, _normalize_ts(ts), size_km, resolution_meters)
     path = CACHE_DIR / f"{key}.png"
-    request_info = {"lat": lat, "lon": lon, "ts": _normalize_ts(ts), "size_km": size_km}
+    request_info = {"lat": lat, "lon": lon, "ts": _normalize_ts(ts),
+                    "size_km": size_km, "resolution_meters": resolution_meters}
     if path.exists() and path.stat().st_size > 0:
         meta = _load_meta(key) or {}
         # Backfill stats if missing OR if stats schema has changed.
@@ -187,6 +196,7 @@ def _fetch_one(lat: float, lon: float, ts: str, size_km: float, window_days: int
         result = fetch_sentinel_image(
             lat=lat, lon=lon, timestamp=_normalize_ts(ts),
             size_km=size_km, window_days=window_days,
+            resolution_meters=resolution_meters,
         )
         result.image.save(path)
         stats = assess_image_quality_impl(str(path))
@@ -254,6 +264,9 @@ class FetchRequest(BaseModel):
     after_date: str
     size_km: float = Field(default=10.0, ge=1, le=100)
     window_days: int = Field(default=30, ge=1, le=180)
+    # Default to native 10m so the cached pair matches the GRPO training env.
+    # Cold fetch at 50km/10m takes ~30-60s; subsequent calls hit the cache.
+    resolution_meters: int = Field(default=10, ge=10, le=120)
 
 
 app = FastAPI(title="SatelliteAgent")
@@ -797,8 +810,10 @@ def api_geocode(q: str) -> dict[str, Any]:
 
 @app.post("/api/fetch")
 def api_fetch(req: FetchRequest) -> dict[str, Any]:
-    b_key, b_meta = _fetch_one(req.lat, req.lon, req.before_date, req.size_km, req.window_days)
-    a_key, a_meta = _fetch_one(req.lat, req.lon, req.after_date,  req.size_km, req.window_days)
+    b_key, b_meta = _fetch_one(req.lat, req.lon, req.before_date, req.size_km,
+                                req.window_days, req.resolution_meters)
+    a_key, a_meta = _fetch_one(req.lat, req.lon, req.after_date,  req.size_km,
+                                req.window_days, req.resolution_meters)
     return {
         "request": req.model_dump(),
         "before": {"key": b_key, "meta": b_meta, "date": req.before_date},

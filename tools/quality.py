@@ -13,7 +13,7 @@ from PIL import Image
 
 
 # Bump this when the stats formula changes so the server backfills stale sidecars.
-STATS_SCHEMA = "v2_hsv_sat"
+STATS_SCHEMA = "v3_nodata"
 
 
 def assess_image_quality_impl(image_path: str) -> dict[str, Any]:
@@ -34,6 +34,12 @@ def assess_image_quality_impl(image_path: str) -> dict[str, Any]:
 
     h, w, _ = arr.shape
     arr_f = arr.astype(np.float32)
+
+    # Tier 0: data coverage. Pixels that are exactly (0,0,0) on all channels
+    # are SimSat / STAC fill (tile boundary, no S2 coverage at that bbox edge).
+    # A high nodata_fraction means the AOI partially missed the satellite swath
+    # and the image is unusable as evidence regardless of cloud.
+    nodata_fraction = float((arr.sum(axis=-1) == 0).mean())
 
     # Tier 1: brightness / darkness
     brightness_mean = float(arr_f.mean())
@@ -64,12 +70,19 @@ def assess_image_quality_impl(image_path: str) -> dict[str, Any]:
     # Cloud proxy: max of saturated-white pixels and the bright+low-sat heuristic.
     cloud_proxy = float(max(white_fraction, cloud_like_fraction))
 
-    # Usability heuristic (tuned for scale after fix)
-    usable = (cloud_proxy < 0.5) and (dark_fraction < 0.10) and (edge_density > 2.0)
+    # Usability heuristic. nodata wins over cloud — a half-empty PNG is useless
+    # for visual analysis even if the visible part is clear.
+    usable = (
+        nodata_fraction < 0.20
+        and cloud_proxy < 0.5
+        and dark_fraction < 0.10
+        and edge_density > 2.0
+    )
 
     return {
         "_schema": STATS_SCHEMA,
         "size": [w, h],
+        "nodata_fraction": round(nodata_fraction, 3),
         "brightness_mean": round(brightness_mean, 2),
         "brightness_std":  round(brightness_std, 2),
         "dynamic_range":   round(dynamic_range, 1),
