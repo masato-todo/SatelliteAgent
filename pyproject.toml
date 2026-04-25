@@ -1,0 +1,40 @@
+[project]
+name = "satellite-agent"
+version = "0.1.0"
+description = "Onboard LFM2-VL agent for satellite downlink optimization"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "google-genai>=1.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.9.0",
+    "pillow>=10.0.0",
+    "numpy>=1.26.0",
+    "requests>=2.32.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.6.0",
+]
+simsat = [
+    # Phase 2: SimSat integration
+    "rasterio>=1.3.0",
+    "shapely>=2.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*", "agent*", "tools*", "simsat_client*", "eval*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
