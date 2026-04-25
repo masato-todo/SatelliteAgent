@@ -14,8 +14,17 @@ GRPO 学習用キャッシュを大量に保管するため、SimSat + Satellite
 ```bash
 ssh user@gpu-host
 cd /opt   # 任意の場所
-git clone <YOUR_REPO_URL> mz_ai_appmaker
-cd mz_ai_appmaker
+
+# SatelliteAgent (本リポジトリ)
+git clone https://github.com/masato-todo/SatelliteAgent.git
+cd SatelliteAgent
+git checkout Branch/refactor   # 現状の作業ブランチ
+cd ..
+
+# SimSat (S2 取得用 mock。upstream は DPhi-Space/SimSat。
+# 本プロジェクト固有の改修 — resolution_meters 等 — がある場合は
+# 自分の fork に push してから clone してください)
+git clone https://github.com/masato-todo/SimSat.git   # or DPhi-Space/SimSat
 ```
 
 ## 2. SimSat 起動
@@ -27,12 +36,13 @@ docker ps --filter name=fakesat-sim
 # ヘルスチェック
 curl -s http://localhost:9005/ | head -c 100
 # → {"message":"Simulation API is online"}
+cd ..
 ```
 
 ## 3. SatelliteAgent 環境構築
 
 ```bash
-cd ../SatelliteAgent
+cd SatelliteAgent
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt        # FastAPI / pillow / numpy / yaml / etc
