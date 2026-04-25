@@ -23,13 +23,10 @@ env/
 .env
 .env.local
 
-# Data & Models
-data/scenarios/*.tif
-data/scenarios/*.tiff
-data/scenarios/*.png
-data/scenarios/*.jpg
-data/region_db/*.db
-data/region_db/*.sqlite
+# Data — never tracked. Bootstrap via rsync (see docs/REMOTE_DEPLOY.md).
+data/
+
+# Models
 models/*
 !models/.gitkeep
 
