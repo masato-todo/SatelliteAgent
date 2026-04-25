@@ -5,7 +5,7 @@ GRPO 学習用キャッシュを大量に保管するため、SimSat + Satellite
 ## 前提
 
 - Linux + Docker (Compose v2) インストール済み
-- Python 3.11+ + venv
+- Python 3.10+ と [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - インターネット接続 (Element84 STAC へアクセス)
 - リポジトリ clone 権限
 
@@ -21,10 +21,7 @@ cd SatelliteAgent
 git checkout Branch/refactor   # 現状の作業ブランチ
 cd ..
 
-# SimSat (S2 取得用 mock。upstream は DPhi-Space/SimSat。
-# 本プロジェクト固有の改修 — resolution_meters 等 — がある場合は
-# 自分の fork に push してから clone してください)
-git clone https://github.com/masato-todo/SimSat.git   # or DPhi-Space/SimSat
+git clone https://github.com/DPhi-Space/SimSat.git   # or DPhi-Space/SimSat
 ```
 
 ## 2. SimSat 起動
@@ -43,11 +40,10 @@ cd ..
 
 ```bash
 cd SatelliteAgent
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt        # FastAPI / pillow / numpy / yaml / etc
-pip install pystac_client                # STAC discovery 用 (negative collection)
+uv sync --extra simsat   # FastAPI / pillow / numpy / yaml / pystac-client / rasterio / shapely
 ```
+
+`uv sync` で `.venv/` が自動生成され、`uv.lock` 通りに依存をインストール。`--extra simsat` は negative collection で使う `pystac_client` 等を含む。
 
 ## 4. キャッシュ保管先 (大容量ディスク) 指定
 
@@ -73,7 +69,7 @@ EOF
 ## 5. SatelliteAgent 起動
 
 ```bash
-.venv/bin/python -m app.server
+uv run python -m app.server
 # 起動ログで確認:
 # [startup] CACHE_DIR = /data/sat_cache
 # [startup] TRACES_DIR = /data/sat_traces
@@ -94,7 +90,7 @@ print(f'cases={d[\"count\"]}')"
 
 ```bash
 cd SatelliteAgent
-.venv/bin/python scripts/prewarm_cache.py
+uv run python scripts/prewarm_cache.py
 ```
 
 ログ例:
@@ -112,7 +108,7 @@ cd SatelliteAgent
 
 時間目安: 1ケース ~30-60秒 cold fetch、96ケース で **~1.5時間**。バックグラウンド推奨:
 ```bash
-nohup .venv/bin/python scripts/prewarm_cache.py > prewarm.log 2>&1 &
+nohup uv run python scripts/prewarm_cache.py > prewarm.log 2>&1 &
 ```
 
 容量目安:
