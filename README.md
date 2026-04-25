@@ -1,81 +1,53 @@
 # SatelliteAgent
 
-AI in Space Hackathon (Liquid AI × DPhi Space, 2026-04-13 〜 2026-05-06) 提出作品。
+オンボード LFM2-VL エージェントが ReAct ループで衛星ダウンリンク帯域を最適化する。
+設計詳細は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 参照。
 
-## 概要
-
-オンボード LFM2-VL エージェントが ReAct ループでツール群を呼び出し、衛星のダウンリンク帯域を自律最適化する。
-
-- **Orchestrator**: LFM2-VL (ReAct で意思決定)
-- **Specialist**: LFM2-VL (変化検知分類、LoRA adapter 切替)
-- **Tools**: 11種 (vision / context / budget / action)
-- **Platform想定**: NVIDIA Orin 16GB
-- **UI**: FastAPI + Leaflet Mission Control Dashboard
-
-設計の全体は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) を参照。
-
-## Quickstart
+## Quickstart (ローカル)
 
 ```bash
-# 依存インストール
-uv sync
-# または: pip install -e .
+uv sync --extra simsat
+cp .env.example .env       # GOOGLE_API_KEY を設定
 
-# .env 準備
-cp .env.example .env
-# ANTHROPIC_API_KEY を設定 (Phase 1 は Claude Opus で ReAct をドライブ)
+# SimSat 起動 (別シェル)
+cd SimSat && docker compose up -d --build sim
 
-# SimSat 起動 (別シェル、SimSat/ の docker-compose up -d)
-# サーバー起動
-python -m app.server
+# SatelliteAgent 起動
+uv run python -m app.server
 ```
 
-ブラウザで http://localhost:7860 を開く。起動時に自動で Sentinel-2 を取得、Template 切替 / 座標 / 日付 / Footprint / 検索ウィンドウが全てUIで調整可能。Run Agent で ReAct トレースを SSE で流す。
+ブラウザで http://localhost:7860 → DM3 96 ケース (xBD 80 + negative 16) から Before/After を選んで `Run Agent`。
+
+## Quickstart (リモート GPU サーバ)
+
+[docs/REMOTE_DEPLOY.md](docs/REMOTE_DEPLOY.md) 参照。
+ローカルからは `ssh -L 7860:localhost:7860 user@gpu-host` でトンネル → http://localhost:7860 でブラウザアクセス。
+
+## データ
+
+`data/` は git 管理外。bootstrap (DM3 metadata 配布、cache prewarm 等) は [docs/REMOTE_DEPLOY.md](docs/REMOTE_DEPLOY.md) の手順に従う。
 
 ## ディレクトリ構成
 
 ```
-app/                  FastAPI + Leaflet Mission Control Dashboard
-  ├─ server.py        FastAPI エンドポイント (/api/fetch, /api/run_agent SSE)
-  └─ static/          index.html, app.js (Leaflet), app.css
+app/
+  ├─ server.py        FastAPI: /api/fetch, /api/run_agent (SSE), /api/disasterm3/cases ...
+  └─ static/
+      ├─ index.html
+      ├─ app.css
+      └─ js/          ES modules (state-utils, maps, tools, dm3-fetch, annotate-traces, main)
 agent/                Orchestrator (ReAct loop, LLM providers)
-  ├─ react_loop.py
-  ├─ providers.py     Claude / LFM2-VL 差し替え層
-  └─ prompts/
-tools/                ツール層
-  ├─ schema.py        JSONSchema 定義
-  ├─ stubs.py         Phase 1 モック実装
-  ├─ vision.py        classify_change, fetch_band, zoom_in
-  ├─ context.py       get_region_info, get_history, compute_area
-  ├─ budget.py        check_downlink_budget, estimate_size
-  ├─ action.py        compose_report, submit_to_ground, drop
-  └─ validator.py     schema validation + retry + fallback
-simsat_client/        SimSat API wrapper (Phase 2)
-data/
-  ├─ scenarios/       テストシナリオ (flood / fire / deforestation)
-  └─ region_db/
-eval/                 Bandwidth saving など評価ハーネス
-models/               FT adapter (gitignore、HF Hub 配布)
+tools/                ツール層 (vision / context / budget / action / quality)
+simsat_client/        SimSat API wrapper
+scripts/
+  ├─ prewarm_cache.py    DM3 96 ケースを 50km/10m で pre-fetch
+  ├─ collect_negatives.py STAC 経由で negative シナリオ収集
+  └─ sync_cache.sh       ローカル → リモート rsync
+data/                 (gitignore) scenarios/, metadata/, traces/, region_db/
+eval/                 評価ハーネス
+models/               (gitignore) FT adapter
 docs/
-  ├─ ARCHITECTURE.md
-  ├─ TOOL_SPEC.md
-  └─ DEMO_SCENARIOS.md
 ```
-
-## 開発フェーズ
-
-1. **Phase 1 (現在)**: 全ツールをモック化 + Claude Opus で ReAct ループを駆動。UIと仕様の固め込み。
-2. **Phase 2**: モックを実ツール (SimSat API, SQLite, classify_change 等) に順次差し替え。
-3. **Phase 3**: Orchestrator を LFM2-VL (FT済 adapter) に差し替え。
-
-## 役割分担
-
-| 領域 | 担当 |
-|---|---|
-| `app/`, `tools/`, `agent/providers.py`, `simsat_client/`, `eval/` | コア実装 |
-| `agent/react_loop.py` プロンプト設計, FTデータ生成 | チーム |
-| `models/` (adapter 学習) | チーム |
-| `docs/` | 共同 |
 
 ## License
 
