@@ -17,6 +17,8 @@ before the real Phase 2 triplet data lands.
 """
 from __future__ import annotations
 
+import functools
+import inspect
 from typing import Any, Callable, TYPE_CHECKING
 
 # Lazy imports: `verifiers` and `datasets` are heavy and only needed when
@@ -28,6 +30,37 @@ if TYPE_CHECKING:
 
 # === SSOT imports from SatelliteAgent ===
 from tools.stubs import STUB_TOOLS, submit_to_ground, drop
+
+
+def _expose_for_vf(fn: Callable) -> Callable:
+    """Strip leading-underscore ``**_extra``-style varkw from a function's
+    signature so verifiers' pydantic-v2 backed tool converter accepts it.
+
+    SatelliteAgent's stubs use ``**_extra`` / ``**_ignored`` to swallow
+    forward-compat kwargs from upstream callers, but pydantic forbids field
+    names starting with underscore (``Fields must not use names with leading
+    underscores; e.g., use 'extra' instead of '_extra'``). We expose a wrapper
+    with the varkw removed; runtime behaviour is unchanged.
+    """
+    sig = inspect.signature(fn)
+    has_underscore_varkw = any(
+        p.kind == inspect.Parameter.VAR_KEYWORD and p.name.startswith("_")
+        for p in sig.parameters.values()
+    )
+    if not has_underscore_varkw:
+        return fn
+
+    new_params = [
+        p for p in sig.parameters.values()
+        if not (p.kind == inspect.Parameter.VAR_KEYWORD and p.name.startswith("_"))
+    ]
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        return fn(*args, **kwargs)
+
+    wrapper.__signature__ = sig.replace(parameters=new_params)  # type: ignore[attr-defined]
+    return wrapper
 # from eval.validators.common import (   # Phase 2 TODO
 #     action_match,
 #     attach_image_match,
@@ -144,7 +177,7 @@ def load_environment(toy: bool = True, **kwargs: Any) -> "vf.Environment":
     SatelliteToolEnv = _build_env_class()
 
     if toy:
-        tools: list[Callable] = [submit_to_ground, drop]
+        tools: list[Callable] = [_expose_for_vf(submit_to_ground), _expose_for_vf(drop)]
         return SatelliteToolEnv(
             dataset=_toy_dataset(),
             tools=tools,
