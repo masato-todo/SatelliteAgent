@@ -160,7 +160,11 @@ def _build_env_class():
             state["expected_action"] = info.get("expected_action", "")
             return state
 
-        def update_tool_args(self, tool_name: str, tool_args: dict, state) -> dict:
+        def update_tool_args(self, tool_name: str, tool_args: dict, *args, **kwargs) -> dict:
+            # verifiers' StatefulToolEnv has changed the trailing positional args
+            # of update_tool_args between releases (state, messages, ...). The
+            # toy env doesn't need any of them -- pure functions of tool_args --
+            # so absorb anything extra to stay forward/backward compatible.
             return tool_args
 
     return _SatelliteToolEnv
