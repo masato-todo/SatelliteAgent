@@ -34,7 +34,7 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["app*", "agent*", "tools*", "simsat_client*", "eval*"]
+include = ["app*", "agent*", "tools*", "simsat_client*", "eval*", "satelliteagent_env*"]
 
 [tool.ruff]
 line-length = 100

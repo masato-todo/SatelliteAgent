@@ -130,5 +130,5 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   // Auto-fetch on load
-  fetchImages();
+  // fetchImages();
 });
