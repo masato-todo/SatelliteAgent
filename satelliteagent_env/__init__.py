@@ -158,14 +158,34 @@ def _build_env_class():
             info = state.get("info") or {}
             state["scenario"] = info.get("scenario", "")
             state["expected_action"] = info.get("expected_action", "")
+            state["terminal_called"] = False
             return state
 
         def update_tool_args(self, tool_name: str, tool_args: dict, *args, **kwargs) -> dict:
-            # verifiers' StatefulToolEnv has changed the trailing positional args
-            # of update_tool_args between releases (state, messages, ...). The
-            # toy env doesn't need any of them -- pure functions of tool_args --
-            # so absorb anything extra to stay forward/backward compatible.
+            # verifiers' StatefulToolEnv calls this as
+            # update_tool_args(tool_name, tool_args, messages, state, **kwargs).
+            # We accept *args/**kwargs to stay compatible across verifiers
+            # versions, but we still need to reach `state` so we can mark the
+            # rollout completed when a terminal tool fires.
+            state = kwargs.get("state")
+            if state is None:
+                # positional fallback: state is the dict-shaped arg after messages
+                for a in args:
+                    if isinstance(a, dict) and ("info" in a or "expected_action" in a or "scenario" in a):
+                        state = a; break
+            if state is not None and tool_name in {"submit_to_ground", "drop"}:
+                state["terminal_called"] = True
             return tool_args
+
+        @vf.stop
+        async def terminal_tool_called(self, state, **kwargs):
+            """Stop the rollout as soon as `submit_to_ground` or `drop` is
+            called. Without this, vLLM with `tool_choice=required` would force
+            the model to keep emitting tool calls every turn until max_turns
+            is hit, which inflates token usage and creates degenerate
+            "drop drop drop" trajectories.
+            """
+            return bool(state.get("terminal_called"))
 
     return _SatelliteToolEnv
 
