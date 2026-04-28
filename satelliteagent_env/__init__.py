@@ -226,6 +226,21 @@ def _derive_expected(case: dict) -> dict:
     }
 
 
+def _image_part(path: str) -> dict:
+    """Build an OpenAI-compatible chat-completions image part from a local
+    file path. prime-rl orchestrator (trajectories.py) expects the
+    `image_url` form with a `data:image/...;base64,...` URL; the raw
+    `{type: image, path: ...}` shape is rejected by vLLM with
+    `501 Unknown part type: image`.
+    """
+    import base64, os
+    ext = os.path.splitext(path)[1].lower()
+    mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+    with open(path, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode("ascii")
+    return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
+
+
 def _real_dataset(data_root: str) -> "Dataset":
     import yaml
     from datasets import Dataset
@@ -253,9 +268,9 @@ def _real_dataset(data_root: str) -> "Dataset":
                 ]},
                 {"role": "user", "content": [
                     {"type": "text",  "text": "Before image (previous satellite pass over this location):"},
-                    {"type": "image", "path": before},
+                    _image_part(before),
                     {"type": "text",  "text": "After image (current pass, same location):"},
-                    {"type": "image", "path": after},
+                    _image_part(after),
                     {"type": "text",  "text": (
                         "Analyze the pair and decide what to report to ground. "
                         "Use your tools. End with submit_to_ground(...) or drop()."
