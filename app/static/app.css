@@ -498,7 +498,7 @@ main {
 #tools-status:empty { display: none; }
 
 /* Modal */
-#submit-modal, #traces-modal {
+#submit-modal, #traces-modal, #settings-modal {
   position: fixed;
   inset: 0;
   z-index: 2000;
@@ -506,6 +506,28 @@ main {
   align-items: center;
   justify-content: center;
 }
+
+#settings-btn {
+  background: #1a1a20;
+  color: #ccc;
+  border: 1px solid #444;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-left: 12px;
+}
+#settings-btn:hover { background: #2a2a30; color: #fff; }
+
+button.danger { background: #803020; color: #fff; }
+button.danger:hover { background: #a04030; }
+
+.trace-kind { font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+.trace-kind.agent { background: #2a4060; color: #cfe; }
+.trace-kind.human { background: #2a5040; color: #cfd; }
+.trace-gt { font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-right: 6px; }
+.trace-gt.ok   { background: #2a5030; color: #afa; }
+.trace-gt.miss { background: #602030; color: #faa; }
 
 /* Saved-traces browser — near-fullscreen so events are readable.
    Note: !important on width is required because the base .modal-content rule

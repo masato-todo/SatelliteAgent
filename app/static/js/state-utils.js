@@ -22,6 +22,8 @@ export const state = {
   overlayAfter: null,
   template: null,
   dm3: null,
+  vlmProvider: null,
+  vlmModel: null,
   syncing: false,
   eventSource: null,
   // Annotation mode

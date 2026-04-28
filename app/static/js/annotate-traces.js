@@ -263,10 +263,16 @@ async function refreshTracesList() {
       const row = document.createElement("div");
       row.className = "trace-row";
       const ct = t.final_change_type ? ` · <b>${escapeHtml(t.final_change_type)}</b>` : "";
+      const kindBadge = t.kind === "agent" ? `<span class="trace-kind agent">AGENT</span>`
+                       : t.kind === "human" ? `<span class="trace-kind human">HUMAN</span>`
+                       : "";
+      const gtBadge = t.gt_match === true  ? `<span class="trace-gt ok">GT✓</span>`
+                    : t.gt_match === false ? `<span class="trace-gt miss">GT✗</span>`
+                    : "";
       const fullName = t.scenario_id || t.filename;
       row.innerHTML = `
-        <div class="trace-row-head" title="${escapeHtml(fullName)}">${escapeHtml(fullName)}${ct}</div>
-        <div class="trace-row-meta">${escapeHtml((t.created_at || "").slice(0, 19))} · ${t.n_events || 0} events · ${escapeHtml(t.profile || "?")} · ${(t.size_bytes || 0)} B</div>
+        <div class="trace-row-head" title="${escapeHtml(fullName)}">${kindBadge}${gtBadge} ${escapeHtml(fullName)}${ct}</div>
+        <div class="trace-row-meta">${escapeHtml((t.created_at || "").slice(0, 19))} · ${t.n_events || 0} events · ${escapeHtml(t.profile || "?")} · ${escapeHtml(t.annotator || "?")} · ${(t.size_bytes || 0)} B</div>
       `;
       row.addEventListener("click", async () => {
         document.querySelectorAll(".trace-row.selected").forEach(x => x.classList.remove("selected"));
@@ -327,12 +333,15 @@ async function viewTrace(filename) {
       <button id="trace-delete-btn" class="trace-delete-btn">🗑 Delete</button>
     </div>
     <div class="trace-meta">
-      scenario: ${escapeHtml(meta.scenario_id || "?")}<br>
-      profile: ${escapeHtml(meta.profile || "?")} · annotator: ${escapeHtml(meta.annotator || "?")}<br>
-      created: ${escapeHtml((meta.created_at || "").slice(0, 19))}<br>
-      lat/lon: ${escapeHtml(String(meta.source_scenario?.lat ?? "?"))} / ${escapeHtml(String(meta.source_scenario?.lon ?? "?"))} · size: ${escapeHtml(String(meta.source_scenario?.size_km ?? "?"))} km<br>
-      dates: ${escapeHtml(String(meta.source_scenario?.before_date ?? "?"))} → ${escapeHtml(String(meta.source_scenario?.after_date ?? "?"))}<br>
-      <b>final:</b> ${escapeHtml(final.action || "?")} · change_type=${escapeHtml(final.change_type || "?")} · urgency=${escapeHtml(String(final.urgency ?? "?"))}
+      scenario: ${escapeHtml(meta.scenario_id || meta.scene_id || "?")}<br>
+      kind: ${escapeHtml(meta.scenario_type || (meta.provider ? "agent" : "human"))} ·
+      profile/provider: ${escapeHtml(meta.profile || meta.provider || "?")} ·
+      annotator/model: ${escapeHtml(meta.annotator || meta.model || "?")}<br>
+      created: ${escapeHtml((meta.created_at || meta.collected_at || "").slice(0, 19))}<br>
+      lat/lon: ${escapeHtml(String(meta.lat ?? meta.source_scenario?.lat ?? "?"))} / ${escapeHtml(String(meta.lon ?? meta.source_scenario?.lon ?? "?"))} · size: ${escapeHtml(String(meta.size_km ?? meta.source_scenario?.size_km ?? "?"))} km<br>
+      dates: ${escapeHtml(String(meta.before_date ?? meta.source_scenario?.before_date ?? "?"))} → ${escapeHtml(String(meta.after_date ?? meta.source_scenario?.after_date ?? "?"))}<br>
+      expected: ${escapeHtml(meta.expected_action || "?")} (${escapeHtml(meta.expected_class || "?")}) · gt_match: ${doc.gt_match === true ? "✓" : doc.gt_match === false ? "✗" : "—"}<br>
+      <b>final:</b> ${escapeHtml(final.action || final.name || "?")} · change_type=${escapeHtml(final.change_type || (final.result || {}).change_type || "?")} · urgency=${escapeHtml(String(final.urgency ?? (final.result || {}).urgency ?? "?"))}
     </div>
     <div class="trace-events">${eventLines || "<i>(no events)</i>"}</div>
   `;

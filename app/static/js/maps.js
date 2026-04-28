@@ -131,8 +131,12 @@ export async function loadDamageOverlay() {
   if (state.beforeMeta) setMapLabel("before", labelFor("Before", state.beforeMeta));
   if (state.afterMeta)  setMapLabel("after",  labelFor("After",  state.afterMeta));
   if (!state.damageVisible) return;
-  if (!state.dm3 || !state.dm3.precise) return;
+  if (!state.dm3) return;
   if (!state.imgW || !state.imgH) return;
+  if (state.dm3.source === "MCD64A1") {
+    return loadBurnOverlay();
+  }
+  if (!state.dm3.precise) return;
 
   const aoiLat = parseFloat($("lat").value);
   const aoiLon = parseFloat($("lon").value);
@@ -183,6 +187,51 @@ export async function loadDamageOverlay() {
       if (el) el.textContent = (el.textContent || "") + tag;
     }
   }
+}
+
+async function loadBurnOverlay() {
+  const aoiLat = parseFloat($("lat").value);
+  const aoiLon = parseFloat($("lon").value);
+  const sizeKm = parseFloat($("size_km").value);
+
+  let gj;
+  try {
+    const res = await fetch(`/api/scene/burn_polygon/${encodeURIComponent(state.dm3.id)}`);
+    if (!res.ok) return;
+    gj = await res.json();
+  } catch (e) {
+    console.warn("burn_polygon fetch failed", e);
+    return;
+  }
+
+  const style = { color: "#ff5530", weight: 2, opacity: 0.95, fillColor: "#ff5530", fillOpacity: 0.18 };
+  const beforeGroup = L.layerGroup();
+  const afterGroup  = L.layerGroup();
+  const rings = extractRings(gj.geometry);
+  for (const ring of rings) {
+    const latlngs = ring.map(([lon, lat]) =>
+      wgs84ToLeaflet(lat, lon, aoiLat, aoiLon, sizeKm, state.imgW, state.imgH)
+    );
+    L.polygon(latlngs, style).addTo(beforeGroup);
+    L.polygon(latlngs, style).addTo(afterGroup);
+  }
+  beforeGroup.addTo(state.mapBefore);
+  afterGroup.addTo(state.mapAfter);
+  state.damageLayerBefore = beforeGroup;
+  state.damageLayerAfter  = afterGroup;
+
+  const tag = ` · GT: burn area (${state.dm3.event_name || "?"})`;
+  for (const side of ["before", "after"]) {
+    const el = document.querySelector(`#map-${side}`).parentElement.querySelector(".map-label");
+    if (el) el.textContent = (el.textContent || "") + tag;
+  }
+}
+
+function extractRings(geom) {
+  if (!geom) return [];
+  if (geom.type === "Polygon") return geom.coordinates;
+  if (geom.type === "MultiPolygon") return geom.coordinates.flat();
+  return [];
 }
 
 // ---- Bbox drawing ----

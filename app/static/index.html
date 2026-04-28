@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>SatelliteAgent — Mission Control</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="/static/app.css?v=2026042506">
+<link rel="stylesheet" href="/static/app.css?v=2026042608">
 </head>
 <body>
 
@@ -17,7 +17,29 @@
     <div>SimSat: <span id="simsat-url">–</span></div>
     <div>Agent: <span id="provider-info" class="provider-stub">–</span></div>
   </div>
+  <button id="settings-btn" title="Settings (VLM provider/model)">⚙ Settings</button>
 </header>
+
+<!-- Settings modal -->
+<div id="settings-modal" hidden>
+  <div class="modal-backdrop"></div>
+  <div class="modal-content">
+    <h3>Settings · VLM Provider</h3>
+    <label>Provider
+      <select id="vlm-provider"></select>
+    </label>
+    <label>Model
+      <select id="vlm-model"></select>
+    </label>
+    <p class="hint" style="opacity:0.7; font-size:12px; margin-top:8px;">
+      Used by <code>classify_change (VLM)</code>. Selection is saved per-browser.
+      Run Agent currently requires the Gemini provider.
+    </p>
+    <div class="modal-buttons">
+      <button id="settings-close-btn">Close</button>
+    </div>
+  </div>
+</div>
 
 <main>
   <!-- Left: Controls -->
@@ -45,8 +67,8 @@
     </div>
 
     <label>
-      Footprint: <span id="size_km_val">50</span> km
-      <input id="size_km" type="range" min="2" max="100" step="1" value="50">
+      Footprint: <span id="size_km_val">10</span> km
+      <input id="size_km" type="range" min="2" max="100" step="1" value="10">
     </label>
 
     <div class="row">
@@ -67,7 +89,9 @@
 
     <div class="buttons">
       <button id="fetch-btn">Fetch Images</button>
-      <button id="run-btn" class="primary">Run Agent</button>
+      <button id="save-pair-btn" title="Persist the currently displayed Before/After as the canonical pair for this scene">Save Before/After</button>
+      <select id="cache-pair-select" style="display:none;"></select>
+      <button id="cache-use-btn" style="display:none;">Use cache</button>
     </div>
 
     <div id="status"></div>
@@ -105,7 +129,7 @@
         <div class="a-section-label">Evidence + Classify</div>
         <div class="a-row">
           <button class="tool-btn" data-tool="get_change_stats" title="Computes ALL spectral index deltas (NBR/NDVI/MNDWI/NDBI) and returns mean/median/std/min/max/percentiles + strong↓↑ fractions. Pure data — agent decides class.">get_change_stats</button>
-          <button class="tool-btn" data-tool="classify_change" title="VLM-based (Gemini interim → LFM2-VL FT): looks at Before/After RGB and reasons about the change.">classify_change (VLM)</button>
+          <button class="tool-btn" data-tool="classify_change" title="VLM-based: uses the provider+model selected above.">classify_change (VLM)</button>
           <button class="tool-btn" data-tool="get_region_info">get_region_info</button>
         </div>
       </div>
@@ -214,6 +238,8 @@
         <h2>ReAct Trace</h2>
         <span id="mode-badge" class="mode-agent">AGENT</span>
         <span class="ph-spacer"></span>
+        <button id="run-btn" class="ph-action primary">Run Agent</button>
+        <button id="trace-clear-btn" class="ph-action" title="Clear the trace currently shown in this panel (does not delete saved files)">Clear</button>
         <button id="traces-list-btn" class="ph-action" title="View saved traces (read / delete)">📂 Traces</button>
         <button id="annotate-btn" class="ph-action">● Start Recording</button>
       </div>
@@ -261,6 +287,6 @@
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script type="module" src="/static/js/main.js?v=2026042515"></script>
+<script type="module" src="/static/js/main.js?v=2026042610"></script>
 </body>
 </html>

@@ -13,7 +13,7 @@ from typing import Any, Callable
 from PIL import Image
 
 
-ZOOM_OUTPUT_DIR = Path(__file__).parent.parent / "data" / "scenarios"
+ZOOM_OUTPUT_DIR = Path(__file__).parent.parent / "data" / "derived"
 ZOOM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 MIN_BBOX_SIDE = 32

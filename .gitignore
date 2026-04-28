@@ -23,6 +23,12 @@ env/
 .env
 .env.local
 
+# Run logs
+*.log
+
+# Local SFT scratch (kept out of git; see train/README.md if you want to revive)
+train/
+
 # Data — never tracked. Bootstrap via rsync (see docs/REMOTE_DEPLOY.md).
 data/
 

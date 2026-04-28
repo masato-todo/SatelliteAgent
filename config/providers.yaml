@@ -1,0 +1,25 @@
+# VLM provider catalog. UI dropdown reads this at /api/providers.
+# Add new entries to expose more backends; restart server to apply.
+#
+# Each entry:
+#   name:     unique key used by frontend
+#   kind:     gemini | openai_compat
+#   models:   list of model ids selectable in the UI
+#   default_model: pre-selected entry
+#   base_url: (openai_compat only) chat-completions root, e.g. http://host:port/v1
+#   api_key_env: (openai_compat only) name of env var for bearer token (optional)
+
+providers:
+  - name: gemini
+    kind: gemini
+    default_model: gemini-2.5-flash
+    models:
+      - gemini-2.5-flash
+      - gemini-2.5-pro
+
+  - name: lfm25_vl_local
+    kind: openai_compat
+    base_url: http://localhost:8085/v1
+    default_model: lfm2.5-vl-450m
+    models:
+      - lfm2.5-vl-450m

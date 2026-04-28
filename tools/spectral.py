@@ -27,7 +27,7 @@ from simsat_client import (
 )
 
 
-OUTPUT_DIR = Path(__file__).parent.parent / "data" / "scenarios"
+OUTPUT_DIR = Path(__file__).parent.parent / "data" / "derived"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 

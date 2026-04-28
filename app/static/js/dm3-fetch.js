@@ -16,13 +16,17 @@ export async function loadDM3Cases() {
 
     const cases = data.cases || [];
     const negativeCases = cases.filter(c => c.is_negative);
-    const preciseCases  = cases.filter(c => c.precise && !c.is_negative);
-    const coarseCases   = cases.filter(c => !c.precise && !c.is_negative);
+    const catalogCases  = cases.filter(c => c.source === "MCD64A1");
+    const preciseCases  = cases.filter(c => c.precise && !c.is_negative && c.source !== "MCD64A1");
+    const coarseCases   = cases.filter(c => !c.precise && !c.is_negative && c.source !== "MCD64A1");
 
     const makeOption = (c, i) => {
       const opt = document.createElement("option");
       opt.value = String(i);
-      let label = `[${c.source}] ${c.event} · ${c.disaster_type} · ${c.capture_date}`;
+      const n = c.cached_count || 0;
+      const saved = (c.canonical_pairs || []).length > 0;
+      const mark = saved ? "★ " : n >= 2 ? "● " : n === 1 ? "◐ " : "";
+      let label = `${mark}[${c.source}] ${c.event} · ${c.disaster_type} · ${c.capture_date}`;
       if (c.damage && c.damage.destroyed + c.damage.major > 0) {
         label += `  (${c.damage.destroyed} destroyed + ${c.damage.major} major)`;
       }
@@ -43,6 +47,12 @@ export async function loadDM3Cases() {
       coarseCases.forEach(c => grpC.appendChild(makeOption(c, cases.indexOf(c))));
       sel.appendChild(grpC);
     }
+    if (catalogCases.length) {
+      const grpM = document.createElement("optgroup");
+      grpM.label = "🔥 MCD64A1 — wildfire burn area (MODIS, ≥1km²)";
+      catalogCases.forEach(c => grpM.appendChild(makeOption(c, cases.indexOf(c))));
+      sel.appendChild(grpM);
+    }
     if (negativeCases.length) {
       const grpN = document.createElement("optgroup");
       grpN.label = "⊘ NEGATIVE — drop expected (no_change / cloud_blocked / random)";
@@ -54,9 +64,37 @@ export async function loadDM3Cases() {
   }
 }
 
+function updateCachePairWidget(c) {
+  const sel = $("cache-pair-select");
+  const btn = $("cache-use-btn");
+  if (!sel || !btn) return;
+  sel.innerHTML = "";
+  const pairs = (c && c.canonical_pairs) || [];
+  if (!pairs.length) {
+    sel.style.display = "none";
+    btn.style.display = "none";
+    return;
+  }
+  pairs.forEach((p, i) => {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = `${p.size_km}km · B[${p.before_date}] / A[${p.after_date}]`;
+    opt.dataset.pair = JSON.stringify(p);
+    sel.appendChild(opt);
+  });
+  sel.style.display = "";
+  btn.style.display = "";
+}
+
 export function onDM3Change() {
   const opt = $("dm3-case").selectedOptions[0];
-  if (!opt || !opt.value) { $("dm3-gt").innerHTML = ""; state.dm3 = null; clearDamageOverlay(); return; }
+  if (!opt || !opt.value) {
+    $("dm3-gt").innerHTML = "";
+    state.dm3 = null;
+    clearDamageOverlay();
+    updateCachePairWidget(null);
+    return;
+  }
   const c = JSON.parse(opt.dataset.case);
   state.dm3 = c;
   clearDamageOverlay();
@@ -70,6 +108,7 @@ export function onDM3Change() {
     if (lbl) lbl.textContent = c.size_km;
   }
   state.template = c.id;
+  updateCachePairWidget(c);
 
   const lines = [];
   const precisionTag = c.precise
@@ -97,6 +136,10 @@ export function onDM3Change() {
     lines.push(
       `<span class="gt-label">Damage:</span> ${d.destroyed} destroyed · ${d.major} major · ${d.minor} minor · ${d.no_damage} ok (${d.total} bldgs)`
     );
+  }
+  if ((c.canonical_pairs || []).length) {
+    const p = c.canonical_pairs[0];
+    lines.push(`<span class="gt-precise">★ Saved canonical:</span> ${p.size_km}km · B[${escapeHtml(p.before_date)}] / A[${escapeHtml(p.after_date)}]`);
   }
   $("dm3-gt").innerHTML = lines.join("\n");
   setStatus(`DisasterM3 case loaded: ${c.event}${c.precise ? " (precise)" : ""} — now press Fetch Images`);
@@ -154,6 +197,69 @@ function setLoading(which, opts = {}) {
 function setFetching(isFetching) {
   $("fetch-btn").disabled = isFetching;
   $("run-btn").disabled = isFetching;
+}
+
+export async function saveCurrentPair() {
+  const c = state.dm3;
+  if (!c) { setStatus("select a case first"); return; }
+  if (!state.beforeKey || !state.afterKey) {
+    setStatus("press Fetch Images first to load Before/After");
+    return;
+  }
+  const body = {
+    scene_id:    c.id,
+    lat:         parseFloat($("lat").value),
+    lon:         parseFloat($("lon").value),
+    before_date: $("before_date").value,
+    after_date:  $("after_date").value,
+    size_km:     parseFloat($("size_km").value),
+    before_key:  state.beforeKey,
+    after_key:   state.afterKey,
+    label:       c.mapped_class || c.disaster_type,
+    event_type:  c.disaster_type,
+    event_start: c.event_start,
+    event_end:   c.event_end,
+    event_name:  c.event_name,
+    is_negative:     !!c.is_negative,
+    negative_type:   c.negative_type || null,
+    expected_action: c.expected_action || null,
+  };
+  const btn = $("save-pair-btn");
+  btn.disabled = true;
+  setStatus(`saving Before/After for ${c.id} ...`);
+  try {
+    const res = await fetch("/api/scene/save_pair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      setStatus(`save failed: HTTP ${res.status} ${txt}`);
+      return;
+    }
+    const d = await res.json();
+    setStatus(`saved → ${d.saved_dir}  (canonical entries: ${d.canonical_entries})`);
+  } catch (e) {
+    setStatus(`save error: ${e.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+export function useCachedPair() {
+  const sel = $("cache-pair-select");
+  const opt = sel && sel.selectedOptions[0];
+  if (!opt) return;
+  const p = JSON.parse(opt.dataset.pair);
+  if (p.size_km != null) {
+    $("size_km").value = p.size_km;
+    const lbl = $("size_km_val");
+    if (lbl) lbl.textContent = p.size_km;
+  }
+  if (p.before_date) $("before_date").value = p.before_date;
+  if (p.after_date)  $("after_date").value  = p.after_date;
+  fetchImages();
 }
 
 export async function fetchImages() {

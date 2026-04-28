@@ -3,33 +3,64 @@
 import { state, $, setStatus, updateBudget, BUDGET_MAX } from "./state-utils.js";
 import { initMaps, setImage, setMapLabel, resetMapsToOriginal,
          loadDamageOverlay, clearDamageOverlay, toggleDrawMode, clearDrawnBbox } from "./maps.js";
-import { loadDM3Cases, onDM3Change, loadTemplates, fetchImages,
-         searchBeforeCandidates, searchAfterCandidates, geocodeSearch } from "./dm3-fetch.js";
+import { loadDM3Cases, onDM3Change, loadTemplates, fetchImages, useCachedPair,
+         saveCurrentPair, searchBeforeCandidates, searchAfterCandidates,
+         geocodeSearch } from "./dm3-fetch.js";
 import { runTool, setToolsStatus } from "./tools.js";
+import { initProviders, openSettings, closeSettings } from "./providers.js";
 import { toggleRecording, openSubmitModal, closeSubmitModal,
          onSubmitConfirm, onDropClick, openTracesModal, closeTracesModal,
          clearTrace, renderTraceEvent, discardTrace } from "./annotate-traces.js";
 
 // ---- Agent (SSE) ----
 
+function setRunButton(running) {
+  const btn = $("run-btn");
+  if (!btn) return;
+  btn.textContent = running ? "Stop Agent" : "Run Agent";
+  btn.classList.toggle("danger", running);
+}
+
+function stopAgent() {
+  if (state.eventSource) {
+    state.eventSource.close();
+    state.eventSource = null;
+  }
+  setRunButton(false);
+}
+
 function runAgent() {
+  if (state.eventSource) { stopAgent(); return; }   // toggle: button now acts as Stop
   if (!state.beforeKey || !state.afterKey) {
     setStatus("Fetch images first.");
     return;
   }
-  if (state.eventSource) { state.eventSource.close(); state.eventSource = null; }
   clearTrace();
   updateBudget(BUDGET_MAX);
   resetMapsToOriginal();
 
-  const url = `/api/run_agent?before_key=${encodeURIComponent(state.beforeKey)}&after_key=${encodeURIComponent(state.afterKey)}`;
+  const qp = new URLSearchParams({
+    before_key: state.beforeKey,
+    after_key:  state.afterKey,
+  });
+  if (state.vlmProvider)  qp.set("provider", state.vlmProvider);
+  if (state.vlmModel)     qp.set("model",    state.vlmModel);
+  if (state.dm3 && state.dm3.id) qp.set("scene_id", state.dm3.id);
+  const url = `/api/run_agent?${qp.toString()}`;
   const es = new EventSource(url);
   state.eventSource = es;
+  setRunButton(true);
 
   es.onmessage = (msg) => {
     let ev;
     try { ev = JSON.parse(msg.data); } catch { return; }
     renderTraceEvent(ev);
+
+    if (ev.type === "error" || ev.type === "final") {
+      // Server-side terminal event — stop reconnecting.
+      stopAgent();
+      return;
+    }
 
     if (ev.type === "observation") {
       const r = ev.result || {};
@@ -46,8 +77,9 @@ function runAgent() {
       }
     }
   };
-  es.addEventListener("end", () => { es.close(); state.eventSource = null; });
-  es.onerror = () => { /* stream ended or server closed */ };
+  es.addEventListener("end", () => stopAgent());
+  // Without this guard EventSource auto-reconnects on stream close → infinite loop
+  es.onerror = () => stopAgent();
 }
 
 // ---- Boot wiring ----
@@ -55,9 +87,19 @@ function runAgent() {
 window.addEventListener("DOMContentLoaded", async () => {
   await loadTemplates();
   await loadDM3Cases();
+  await initProviders();
   initMaps();
 
   $("fetch-btn").addEventListener("click", fetchImages);
+  $("save-pair-btn").addEventListener("click", saveCurrentPair);
+  $("cache-use-btn").addEventListener("click", useCachedPair);
+  $("trace-clear-btn").addEventListener("click", () => {
+    clearTrace();
+    setStatus("trace cleared (saved files unaffected)");
+  });
+  $("settings-btn").addEventListener("click", openSettings);
+  $("settings-close-btn").addEventListener("click", closeSettings);
+  $("settings-modal").querySelector(".modal-backdrop").addEventListener("click", closeSettings);
   $("run-btn").addEventListener("click", runAgent);
   $("annotate-btn").addEventListener("click", toggleRecording);
   $("traces-list-btn").addEventListener("click", openTracesModal);
@@ -129,6 +171,4 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // Auto-fetch on load
-  // fetchImages();
 });

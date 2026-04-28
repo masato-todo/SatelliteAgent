@@ -1,0 +1,71 @@
+# Phase 1 — disaster scene catalog targets.
+# Each entry triggers one MCD64A1 monthly search + polygonize + dedup pass.
+# bbox = [lon_min, lat_min, lon_max, lat_max]. Keep bbox <=10° wide to limit
+# MCD64A1 tile downloads (each tile ~1MB, large bbox => many tiles).
+
+targets:
+  # ---- North America ----
+  - name: hawaii_maui_aug2023
+    year: 2023
+    month: 8
+    bbox: [-160, 18, -155, 22]
+  - name: california_aug2020
+    year: 2020
+    month: 8
+    bbox: [-124, 35, -118, 42]
+  - name: california_sep2020
+    year: 2020
+    month: 9
+    bbox: [-124, 35, -118, 42]
+  - name: california_aug2024
+    year: 2024
+    month: 8
+    bbox: [-124, 38, -120, 41]
+  - name: oregon_sep2020
+    year: 2020
+    month: 9
+    bbox: [-124, 42, -120, 46]
+  - name: bc_canada_jul2023
+    year: 2023
+    month: 7
+    bbox: [-128, 49, -118, 56]
+
+  # ---- Australia (Black Summer) ----
+  - name: australia_dec2019
+    year: 2019
+    month: 12
+    bbox: [148, -38, 154, -33]
+  - name: australia_jan2020
+    year: 2020
+    month: 1
+    bbox: [145, -38, 154, -32]
+
+  # ---- Mediterranean ----
+  - name: greece_aug2021
+    year: 2021
+    month: 8
+    bbox: [22, 36, 28, 41]
+  - name: greece_aug2023
+    year: 2023
+    month: 8
+    bbox: [21, 35, 28, 42]
+  - name: turkey_aug2021
+    year: 2021
+    month: 8
+    bbox: [27, 36, 33, 39]
+
+  # ---- South America (Amazon) ----
+  - name: brazil_amazon_aug2019
+    year: 2019
+    month: 8
+    bbox: [-65, -12, -55, -3]
+  - name: brazil_amazon_sep2024
+    year: 2024
+    month: 9
+    bbox: [-65, -12, -55, -3]
+
+  # ---- Siberia ----
+  - name: siberia_jul2021
+    year: 2021
+    month: 7
+    bbox: [110, 55, 125, 65]

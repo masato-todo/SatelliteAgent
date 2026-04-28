@@ -1,290 +1,303 @@
-# 実験計画 — Phase 1〜6
+# 実験計画
 
-DM3 / xBD を gold データソースに、LFM2-VL ベースの Tool-Using Agent を SFT → GRPO で学習するための段階構成。各 Phase の入出力・解像度方針・成功基準を明示する。
+旧 DM3 ベースの構成 (Phase 1〜6) は、xBD per-image を 10m Sentinel-2 で使うと AOI が重複して unique scene が実質 10件以下にしかならず scale しないことが判明したため破棄。新 Phase 1 から再設計する。
 
-> 設計原則: **Annotate session の cache が GRPO の environment になる**。よって Phase 4 (cache build) は native 10m / 高 fidelity、Phase 1〜2 (探索) は coarse OK、Phase 6 (RL training) は cache のみ参照で SimSat 経由なし。
-
-> Agent の action policy には **submit と drop の両方**がある。drop は「downlink を消費しない正しい判断」であり、negative scenarios (no_change, cloudy 等) を学習材料に**含めない**と GRPO で submit を多発するバイアスを学んでしまう。よって Phase 1 で先に negative を集める。
+> 設計原則: **10m S2 で判別可能な広域変化** (burn scar / flood inundation / clear-cut 等) を **全球規模** で集める。建物単体スケール (~10m 以下) の damage は使わない。
 
 ---
 
-## Phase 1 — Negative scenario collection
+## Phase 1 — Disaster scene catalog discovery
 
-**目的**: Agent が `drop()` で正しく終わるべき scenario を集める。「変化なし」「雲で判定不能」「ノイズ的な季節変動だけ」など、submit すべきでない場面のデータセットを最初に固める。
+**目的**: 10m Sentinel-2 で判別可能な disaster scene を全球規模で発見し、`data/scene_catalog.yaml` に永続化。後続 phase 全ての single source of truth とする。
 
-**現状**: 未着手
+**現状**: 未着手 (旧 DM3 ベース収集は破棄)
 
-**Scenario types** (全部 1 つの dataset として扱う):
+### ソース優先度
 
-| Type | 構成 | 期待 final action | 件数目安 |
-|---|---|---|---|
-| **no_change_pre_pre** | xBD 各 lat/lon、両 Before/After が災害前 (例: 災害-180d, -30d) | **`drop()`** | 8 |
-| **no_change_post_post** | xBD 各 lat/lon、両 Before/After が災害後復旧期 (例: 災害+12mo, +16mo) | **`drop()`** | 8 |
-| **cloud_blocked** | After が雲で >70% 不明瞭 (`cloud_proxy > 0.7`) | **`drop()`** | 5-10 |
-| (optional) random_no_change | サハラ砂漠・海洋・極地等 random 非災害地点 | **`drop()`** | 5-10 |
+| 順位 | ソース | カバー | 単位 | 備考 |
+|---|---|---|---|---|
+| 1 | **MCD64A1** (MODIS Burned Area) | 全球月次 | 500m burn polygon | wildfire 主軸、年数万件 |
+| 2 | **NASA FIRMS** (VIIRS/MODIS active fire) | 全球日次 | point + FRP | MCD64A1 が取れない最近 event を補完 |
+| 3 | **Copernicus EMS** rapid mapping | 国際支援要請 only | event polygon | flood/storm/landslide の多様性、年数百件 |
+| 4 (option) | Hansen Global Forest Change | 全球年次 | 30m loss pixel | 山火事と区別困難なら後段 |
 
-**Tool / UI**:
-- 既存 Annotate UI を流用 (Phase 2 と同じ workflow)
-- ドロップダウンに negative scenario を出すために server.py 側で **疑似 case を canonical_dataset に append** する必要あり
-- Find clearer Before/After で雲量制御 (cloud は逆に **雲が多い候補**を選ぶ)
+### フィルタ条件
 
-**解像度方針**:
-- `auto_resolution_meters(size_km)` (Phase 2 と同じ coarse 設定)
+- 期間: **2017-01 以降** (Sentinel-2 globally cover 完了)
+- 災害域 **≥1km²** (10m S2 で十分判別、AOI 10km に内包)
+- 隣接 event 間距離 **≥20km** (AOI 重複回避のクラスタ間引き)
+- (option) 雲被覆少ない地域・季節を優先
 
-**成功基準**:
-- 各 negative type の date pair が SimSat で取れる
-- no_change 系: 全 index `frac_strong_decrease/increase < 5%` を確認
-- cloud 系: After の `cloud_proxy > 0.7` を確認
-- 全 ~30 sub-case が「drop が正解」と人間判断可能なシグナル分布を持つ
+### ツール / スクリプト
 
-**残タスク**:
-- xBD 8 イベントごとに pre_pre + post_post の date pair を発見 (16 件)
-- cloud_blocked: santa_rosa post_disaster の cloudy day (例: 2017-10-15) のような既知の悪天日を 5-10 件
-- (optional) random non-disaster 5-10 件
+`scripts/build_scene_catalog.py` (新規):
+- MCD64A1: NASA Earthdata 経由で月次 HDF を download → polygon 抽出 → filter
+- FIRMS: CSV API で active fire points → DBSCAN クラスタリング → 仮 polygon
+- EMS: WMS/WFS or static archive scrape
+- 出力: `data/scene_catalog.yaml` + `data/gt_polygons/<id>.geojson`
 
----
-
-## Phase 2 — Positive (xBD) date discovery
-
-**目的**: DM3 各イベントで使える Before/After 日付を見つける。SimSat が S2 シーンを返せて、雲が薄く、災害シグナルが見えるペアを確定。
-
-**現状**: 進行中 (santa_rosa, palu_tsunami, hurricane_florence で動作確認済)
-
-**Tool / UI**:
-- DisasterM3 case dropdown (◆ 49 precise / ◇ 41 coarse)
-- Find clearer Before/After candidates (event_start/end をアンカーに ±N日)
-- Footprint slider 50km デフォルト
-- get_change_stats / compute_index_delta で signal 確認
-
-**解像度方針**:
-- `auto_resolution_meters(size_km)` (50km → 30m, 30km → 20m, 10km → 10m)
-- 速度優先。**fidelity 不問**(Phase 4 で再 fetch する)
-
-**成功基準** (各 8 イベントで):
-- Before/After 両方 SimSat available=true
-- After は disaster_period より後で雲≤30%
-- 該当 disaster_type の主要 index で `frac_strong_decrease/increase > 5%`
-
-**残タスク**:
-- 残り 6 イベント (hurricane_harvey/florence/michael, midwest_flooding, socal_fire, guatemala_volcano) で良い Before/After ペアを発見
-
----
-
-## Phase 3 — Canonical pair lock
-
-**目的**: Phase 1 で発見した positive + negative ペアを `data/canonical_dataset.yaml` に**永続化**。1ケース1構成として、replay 時に毎回同じシーンが取れることを保証。
-
-**入力**: Phase 1 の探索結果 (各ケースの best positive + 2 negative date sets)
-
-**出力**: `data/canonical_dataset.yaml`
+### 出力スキーマ
 
 ```yaml
-# 例
-cases:
-  - id: xbd_santa_rosa_wildfire_00000063
-    label: fire
-    type: positive
-    lat: 38.4735
-    lon: -122.7491
-    size_km: 50
-    request:
-      before_date: 2017-06-21
-      after_date:  2017-11-06
-      window_days: 30
-    expected_resolved:
-      before_datetime: 2017-06-19T18:57:28Z
-      after_datetime:  2017-11-06T18:55:55Z
-    event:
-      name: Tubbs Fire (Northern California)
-      period: [2017-10-08, 2017-10-31]
-
-  - id: xbd_santa_rosa_wildfire_00000063__neg_pre
-    label: no_change
-    type: negative_pre_pre
-    lat: 38.4735
-    lon: -122.7491
-    size_km: 50
-    request:
-      before_date: 2017-04-15
-      after_date:  2017-08-15
-      window_days: 30
-    note: "両方 disaster 前 (2017-10-08 より前)、季節変化のみのコントロール"
-
-  - id: xbd_santa_rosa_wildfire_00000063__neg_post
-    label: no_change
-    type: negative_post_post
-    lat: 38.4735
-    lon: -122.7491
-    size_km: 50
-    request:
-      before_date: 2018-06-21
-      after_date:  2018-10-21
-      window_days: 30
-    note: "両方 disaster 後 (2018年、復旧期)、植生回復の季節変動のみ"
+scenes:
+  - id: fire_au_blackforest_20200103
+    event_type: wildfire        # wildfire | flood | storm | landslide | volcanic | deforestation
+    lat: -35.123
+    lon: 138.567
+    event_period: [2020-01-03, 2020-01-12]
+    affected_area_km2: 14.2
+    source: MCD64A1
+    gt_polygon_uri: data/gt_polygons/fire_au_blackforest_20200103.geojson
+    notes: ""
 ```
 
-**Dataset 構成** (Phase 1 で negative、Phase 2 で positive を集めた結果):
+### スケール目安
 
-| タイプ | 由来 | expected action | 数 |
-|---|---|---|---|
-| **disaster_event** (positive) | xBD precise (1ケースずつ TOP damaged) | `submit_to_ground(class)` | ~49 |
-| **no_change_pre_pre** | xBD lat/lon、両 Before/After 災害前 | `drop()` | ~8 |
-| **no_change_post_post** | xBD lat/lon、両 Before/After 災害後復旧期 | `drop()` | ~8 |
-| **cloud_blocked** | After が雲 >70% | `drop()` | ~5-10 |
-| (optional) easy_negatives | random 非災害地点 (砂漠・海洋等) | `drop()` | ~5-10 |
+- 初期: wildfire 主軸 ~500 scenes
+- 追加: EMS で flood/storm/landslide ~200 scenes
+- 合計目標 **700 scenes** (旧 DM3 80件比 9倍、unique 比だと数十倍)
 
-合計 ~75-85 ケース。positive : negative ≈ 1 : 0.5〜0.7 (シンプル設定)。
+### 成功基準
 
-**生成方法**:
-- Option A: 人間が UI で全 sub-case 確認 → yaml 手書き (品質高、時間大)
-- Option B: スクリプト `scripts/build_canonical_dataset.py` で
-  - Phase 1, 2 の探索結果を集約
-  - SimSat probe で各日付の resolved_datetime を確定
-  - signal 妥当性チェック (positive は signal あり、negative は signal なし、cloud は cloud_proxy>0.7)
-  - 自動 yaml 生成
-- 推奨: **B で叩き台 → A で問題ケースを修正**
+- `scene_catalog.yaml` に 500+ entries
+- 各 scene について GT polygon が GeoJSON で参照可能
+- 抽出 10 件のスポット確認で S2 Before/After に **NBR Δ > 0.2** の signal が見える
 
-**成功基準**: 全 ~80 ケースで再現可能な (lat, lon, dates, size_km, expected_resolved_datetime, expected_action) が yaml に記録されている。
+### 前提セットアップ
+
+- NASA Earthdata 無料アカウント (Earthdata Login OAuth)
+- 依存: `earthaccess`, `geopandas`, `rasterio` (pyproject `geo` extra で対応済)
+
+### 残タスク
+
+- [ ] Earthdata token 取得手順をドキュメント化
+- [ ] `build_scene_catalog.py` 骨格実装
+- [ ] **smoke test**: 1 burn scar を S2 で実画確認 → signal 実在を実証 (実装前にやる価値高い)
+- [ ] スケール検証: filter 後の残数を実測
 
 ---
 
-## Phase 4 — High-resolution cache build
+## Phase 2 — Curate Before/After pairs
 
-**目的**: canonical yaml を読み、**全ケース全派生画像を native 10m でローカルに pre-fetch**。Phase 5 / 6 では SimSat に一切触らない状態を作る。
+**目的**: Phase 1 で得た scene catalog (positive: MCD64A1 wildfire, negative: `negative_cases.yaml`) に対して、S2 で signal 判定可能な Before/After 日付ペアを確定し、`canonical_dataset.yaml` + `data/curated_pairs/<scene_id>/{before,after}.png` に永続化。後続 Phase 5/6 はこれを唯一の入力とする。
 
-**入力**: `data/canonical_dataset.yaml`
+**現状**: 進行中 (positive 51/60, negative 16/16 確定済 ≒ 67 entries)
 
-**Tool**: `scripts/prewarm_cache.py` (新規、~80行)
+### 入力
+
+- `data/scene_catalog.yaml` (Phase 1 の MCD64A1 wildfire 60 scenes、event_period が pixel-DOY から正確に抽出済)
+- `data/metadata/disaster_m3/negative_cases.yaml` (人手curated 16 scenes、no_change / cloud_blocked)
+
+### 出力
+
+- `data/canonical_dataset.yaml` — 各 scene について `(lat, lon, size_km, request.before_date, request.after_date, expected_resolved_datetime, type, expected_action)` を記録
+- `data/curated_pairs/<scene_id>/before.png + after.png + meta.yaml` — GRPO 学習が直接 Image.open する canonical 画像
+- `data/scenarios/<key>.png` — SimSat fetch cache (副産物、shared)
+
+### 候補日付の探索方針
+
+**Positive (MCD64A1 catalog)**
+- AOI: **10 km × 10 m** (probe = final、別解像度の finalize なし)
+- Before anchor: `event_start - {14, 30, 60, 90}d`
+- After  anchor: `event_end   + {0, 7, 14, 21, 30}d`
+- Selection: usable=true & cloud_proxy<0.30 & nodata<0.20 のうち `cloud + nodata` 最小
+
+**Negative (no_change / cloud_blocked)**
+- AOI: 10 km × 10 m
+- 日付: `negative_cases.yaml` 固定 (人手選定済)
+- Selection: image_available のみ要求 (`usable` フラグは disaster 検出向けで負例には不適切)
+  - ただし nodata < 0.30 は要求 (タイル境界に大半が外れた scene を除外)
+  - cloud_blocked タイプは雲が要件なので cloud check 完全 skip
+
+### ツール
+
+| ツール | 用途 |
+|---|---|
+| `scripts/auto_phase2.py` | 旧 DM3 cases (xBD/BRIGHT) 用の自動探索 (legacy) |
+| `scripts/auto_fill_pairs.py` | **MCD64A1 + Negative 一括処理** (本phase主軸) |
+| UI **`Save Before/After`** ボタン | 1 case ずつ目視確認後に curate |
+| UI **`Use cache`** ボタン | 確定済 pair の即時再表示 |
+
+UI には保存状態をマーカーで表示:
+- **★** = canonical 確定済 (`canonical_dataset.yaml` にエントリあり)
+- **●** = この lat/lon に cache 2 件以上 (= Before/After 揃う可能性)
+- **◐** = cache 1 件 (片側のみ)
+
+### 成功基準
+
+- 全 catalog scene について canonical entry 存在 (`★` フル充足)
+- positive: 焼け跡 polygon が AOI 内に収まっており、After で植生反射が変化
+- negative: 期待通り「変化なし」or「雲で判定不能」が視覚的に確認できる
+- 失敗 case (Sentinel-2 カバレッジ穴等) は理由付きで catalog から除外
+
+### SimSat タイル境界対応
+
+旧計画では「nodata>50% を probe で弾く」だったが、**SimSat fork の `sentinel_provider.py` を mosaic 対応に修正済** (`odc.stac.load([best_items], groupby="solar_day")`)。AOI が MGRS 境界をまたいでも同日付の隣接タイルから合成 → nodata≈0 で取得可能になった。これにより検出された焼け跡が AOI 端にあるケースでも救えるようになっている。
+
+### Negative の品質判定が positive と異なる理由
+
+`tools/quality.py` の `usable` フラグは `cloud_proxy<0.5 AND dark_fraction<0.10 AND edge_density>2.0` を要求 (= disaster 検証画像として最適化)。砂漠・海・雲被覆など **意図的に "退屈" な negative scene** はこれを満たさないので、Phase 2 での負例 fetch は専用ロジックで緩める ([auto_fill_pairs.py:process_negative](../scripts/auto_fill_pairs.py))。
+
+### 残タスク
+
+- [ ] auto_fill_pairs FAIL の 9 件を手動確認 (Sentinel coverage 不足 / 別 anchor 試行)
+- [ ] catalog scene の `affected_area_km2` が 1 km² ぴったりの境界値を再評価
+- [ ] negative の地理多様性: 現状 16 件 → 目標 30+ で `random` 系 (海洋/極地) 自動追加検討
+
+---
+
+## Phase 3 — SFT trace collection (Gemini-as-teacher)
+
+**目的**: SFT warmup の学習データとして、canonical 全 scene に対する **完全な ReAct trace** (thought → action → observation → ... → final) を Gemini-2.5-flash で収集。LFM2.5-VL-450M (素) は tool calling が壊滅的なので、Gemini を教師として trace の **形式** を学ばせる distillation 路線。
+
+**現状**: 完了 (2026-04-26)、67 scene × 1 replica の trace を保存 + baseline accuracy 確定。
+
+### なぜ Gemini-2.5-flash か
+
+| 項目 | 値 |
+|---|---|
+| ReAct 実走可否 | ✓ (Phase 1〜2 動作確認済) |
+| 価格 | 無料枠 250 req/日 (67 scene × 数 step ≒ 200-300 calls、ほぼ枠内) |
+| 速度 | 1 trace 平均 25 秒 (実測) |
+| 精度 | 76.5% (実測、後述) |
+
+**精度は怪しいことを許容する**:
+- SFT の主目的は **tool 呼び順 + 引数 JSON 形式の獲得** であって正答率ではない
+- 後段 GRPO で reward signal により正答率は補正される
+- ただし全 trace を盲信せず、`expected_action` 不一致 trace は SFT から除外 or weight 下げる前提
+
+### 前提条件
+
+- Phase 1, 2 完了済 (`data/canonical_dataset.yaml` に 67 entries)
+- `~/.env` または環境に `GOOGLE_API_KEY` 設定 (https://aistudio.google.com/apikey で取得)
+- SatelliteAgent サーバ稼働中 (port 7860)
+- `config/providers.yaml` に gemini provider 定義済
+- SimSat 稼働中 (cache miss 時の Sentinel-2 取得用、ほぼ HIT するので無くても可)
+
+### 再現手順
 
 ```bash
-python scripts/prewarm_cache.py \
-    --dataset data/canonical_dataset.yaml \
-    --resolution 10 \
-    --indices NBR,NDVI,MNDWI,NDBI \
-    --workers 4
+# 1. サーバ起動
+cd ~/work/SatelliteAgent
+APP_HOST=0.0.0.0 nohup .venv/bin/python -m app.server > server.log 2>&1 &
+
+# 2. (必要なら) curated_pairs の cache が落ちている場合は scripts/auto_fill_pairs.py 再実行
+uv run python scripts/auto_fill_pairs.py    # 既存はスキップ
+
+# 3. trace 一括収集 (~30 分)
+uv run python scripts/collect_agent_traces.py
 ```
 
-処理内容 (各ケース):
-1. Before/After RGB PNG (SimSat fetch、10m)
-2. Before/After 4 bands array (NDVI/NBR/MNDWI/NDBI 計算用)
-3. compute_index 4種 × 2 sides = 8 index PNG
-4. compute_index_delta 4種 = 4 delta PNG
-5. cache key + sidecar JSON 永続化
+### スクリプト構成 (`scripts/collect_agent_traces.py`)
 
-**解像度方針**: **常に 10m** (auto_resolution の override)
+各 canonical entry に対して:
+1. `/api/fetch` を叩いて Before/After を確実に cache (skip if HIT)
+2. `/api/run_agent?scene_id=<id>&provider=gemini&model=gemini-2.5-flash` を SSE で消費
+3. server 側が `data/traces/agent/<scene_id>__YYYYMMDDTHHMMSSZ.yaml` に **auto-save**
+4. final.action と canonical の `expected_action` を比較し OK / MISS をログ出力
 
-**容量目安**:
-- 1 ケース ≈ 10m PNG ×3 (RGB + 4 idx ×2 + 4 delta) = 11 PNG
-- 50km @ 10m PNG ≈ 30-50MB/枚 (圧縮後)
-- 11 × 40MB ≈ 450MB / ケース
-- **80 ケース × 450MB ≈ 36GB** ⚠
+オプション:
+```bash
+uv run python scripts/collect_agent_traces.py --limit 5         # smoke test
+uv run python scripts/collect_agent_traces.py --replicas 3      # per-scene 多様性
+uv run python scripts/collect_agent_traces.py --no-skip-existing # 強制再収集
+uv run python scripts/collect_agent_traces.py --only-id <id>    # 単発
+```
 
-→ 容量妥協案:
-- (a) サイズ落とす: **30km @ 10m** に変更 (3000×3000、~15MB/枚 → 12GB total) ← 推奨
-- (b) cache を圧縮 (PNG → WebP lossy) → 半減
-- (c) array bands は npz 圧縮 → 1/3
+サーバ側 auto-save は `app/server.py:_save_agent_trace` で実装。UI から Run Agent を押した場合も同じ path で保存される (ボタン押下不要)。
 
-**成功基準**:
-- canonical 全ケースが 10m cache に存在
-- replay スクリプトで cache だけから get_change_stats / compute_index_delta が走る (SimSat 切断状態でも OK)
+### 出力スキーマ
+
+`data/traces/agent/<scene_id>__YYYYMMDDTHHMMSSZ.yaml`:
+```yaml
+metadata:
+  scene_id: mcd64a1_h03v06_202308_+2079_-15640
+  scenario_type: positive          # positive | negative
+  expected_action: submit_to_ground
+  expected_class: fire
+  lat: 20.789
+  lon: -156.404
+  size_km: 10.0
+  before_date: '2023-06-02'
+  after_date: '2023-10-30'
+  before_key: af4a2227ff
+  after_key:  5b86762a9b
+  provider: gemini
+  model:    gemini-2.5-flash
+  collected_at: '2026-04-26T02:18:33+00:00'
+events:
+  - {type: thought, text: "Classify the change first..."}
+  - {type: action,  name: classify_change, arguments: {}}
+  - {type: observation, name: classify_change, result: {classes: [{name: fire, confidence: 0.98}], bboxes: [...]}}
+  ...
+final:
+  type: final
+  name: submit_to_ground
+  result: {status: ok, report_id: r-0001, attached: true, attached_crop_key: null}
+gt_match: true
+```
+
+### Baseline 数値 (2026-04-26 実測)
+
+| カテゴリ | OK | MISS | accuracy |
+|---|---:|---:|---:|
+| Positive (MCD64A1 wildfire) | 45 | 7 | **86.5%** |
+| Negative (no_change / cloud_blocked) | 7 | 9 | **43.8%** |
+| **全体** | **52** | **16** | **76.5%** |
+
+総 trace = 68 (smoke test 1 件 + 本番 67 件)、所要 27 分 (1 trace 平均 25秒、Gemini step数 7-19 events)。
+
+**観察**:
+- Positive (wildfire) は 86.5% — Gemini は焼け跡 polygon 一致で正しく submit できる
+- **Negative は 43.8% — Gemini は drop 判断が苦手、誤って submit_to_ground しがち**
+- ⇒ SFT 後 / GRPO 後の主たる改善目標は **drop 判断の精度向上**
+
+### UI 連携
+
+- 右サイドバー `Run Agent` ボタンで単発実行 + auto-save (1 case 単位の検証用)
+- `📂 Traces` ボタンで一覧 (`[AGENT]` / `[HUMAN]` バッジ + `GT✓` / `GT✗` バッジで一目で良し悪し判別)
+- 各 trace 詳細から `🗑 Delete` で個別削除可能
+
+### 成功基準 (達成済 ✓)
+
+- [x] 全 67 canonical scene について 1 trace 以上取得
+- [x] `gt_match` メタを記録、baseline accuracy 数値化
+- [x] 失敗 trace も除外せず保存 (後段判断のため)
+- [x] UI から手動 Run でも同じ path で auto-save される (操作整合)
+
+### 残タスク (任意・後段で必要なら)
+
+- [ ] `--replicas 3` で per-scene 多様性増 (336 trace ≒ 無料枠ギリ、temperature 振り分け代替案あり)
+- [ ] MISS trace の人手 trace 上書き (Phase 4 = Human Annotate モード)
+- [ ] SFT データセット export スクリプト (yaml → jsonl 変換 + train/val split)
 
 ---
 
-## Phase 5 — Human Annotate (gold trace 収集)
+## Phase 4 以降 — 詳細化予定
 
-**目的**: Phase 4 cache を使って **各 canonical ケースで人間 gold trace を1〜N本録画**。Recording mode で reasoning 込みで記録。
-
-**入力**: Phase 4 cache + canonical yaml
-
-**Tool**: 既存の Annotate UI (右サイドバー Recording)
-
-**作業 (positive case)**:
-- ドロップダウンでケース選択 → Fetch (cache hit、即時)
-- get_change_stats → 数値確認
-- compute_index_delta → 視覚確認
-- (必要なら) classify_change で VLM 比較
-- bbox draw で attention event
-- pan/zoom で view event
-- **Submit Report** → Stop Recording → 自動保存
-
-**作業 (negative case = no_change_pre_pre / post_post / cloud_blocked)**:
-- get_change_stats で全 strong↓/↑ 弱い (cloud は cloud_proxy>0.7) 確認
-- Thought に「季節変動のみ」or「After は雲に被覆されてて判定不能」
-- **Drop ボタン** → trace に `final.action: drop` が記録される
-- Stop Recording → 自動保存
-- 短い trace (3-5 events) で OK、それも"drop と判断する正しい手順"の学習材料
-
-**出力**: `data/traces/human/*.yaml` (1ケース 1〜数本)
-
-**成功基準**: 全 ~80 ケースで trace 1本以上、final action が canonical の `expected_action` (submit or drop) と一致。
+| Phase | 内容 | 状況 |
+|---|---|---|
+| 4 | Human Annotate (高品質 trace 上書き) | UI Recording モード既存。Phase 3 trace の bad ケースを人手修正する用途。任意 |
+| 5 | SFT warmup | Gemini trace で LFM2.5-VL に tool calling + 出力形式を仕込む。LoRA で開始、別 repo (Kaggle GPU 等) |
+| 6 | GRPO | reward = expected_action 一致 + 帯域効率。Phase 5 後の policy fine-tune |
 
 ---
 
-## Phase 6 — GRPO training
+## 横断的な懸念 (現時点)
 
-**目的**: trace + cache を使って LFM2-VL agent を SFT (warmup) → GRPO 学習。
-
-**入力**:
-- `data/traces/human/*.yaml` (gold)
-- `data/scenarios/*.png` + sidecar (environment)
-- `data/canonical_dataset.yaml` (case index + GT label + expected_action)
-
-**Stages**:
-1. **SFT warmup**: trace の (state, action) ペアで模倣学習。Tool 呼び順を学ぶ。
-2. **GRPO**: 自由ロールアウト。reward = expected_action 一致 + bandwidth efficiency penalty。
-3. **Eval**: held-out canonical ケースで accuracy 測定。
-
-**インフラ**: 別レポジトリ予定 (Kaggle GPU pod など)。本リポジトリは trace + cache の export のみ責任。
-
-**Reward 関数 (案)**:
-```
-# Positive case (GT.expected_action = submit_to_ground)
-reward = + 1.0  if final.change_type == GT.mapped_class    (correct class)
-       - 0.3  if final.change_type ≠ GT.mapped_class       (wrong class, submitted)
-       - 1.0  if final.action == drop                       (false negative, missed disaster)
-
-# Negative case (GT.expected_action = drop)
-reward = + 1.0  if final.action == drop                     (correct silence)
-       - 0.5  if final.action == submit_to_ground          (false positive, wasted bandwidth)
-
-# Both
-       - 0.2 × n_tools_called    (efficiency penalty)
-       - 0.1 × attach_image      (bandwidth penalty)
-```
-
-**成功基準**: held-out で 70%+ action correctness & n_tools_called ≤ trace median × 1.5。
-
----
-
-## 横断的な懸念
-
-| 項目 | 対処 |
+| 項目 | メモ |
 |---|---|
-| **cache 削除事故** | `data/scenarios/` を `.gitignore` 入りつつ、**canonical yaml** だけを repo 管理 → cache が消えても Phase 4 で再生成可能 |
-| **STAC catalog drift** | Phase 3 で記録した `expected_resolved_datetime` と Phase 4 で実際取れる datetime を比較 → ズレたら manifest 更新 (年単位の保守) |
-| **負ケース偏り** | pre_pre / post_post / cloud_blocked / random を散らして collect、特定パターンへの過学習を防止 |
-| **classify_change の VLM 依存** | 学習中は Gemini 不在の前提 → trace の classify_change observation を frozen として使う or 学習 reward から除外 |
-| **解像度ミスマッチ (Annotate vs RL)** | Phase 5 と Phase 4 を厳密に同一 cache key で動かす。Annotate 時に Phase 4 cache hit してることを画面に表示 (`(cached, full 10m)` 等) |
-
----
-
-## 進め方の提案 (短期 1-2週間)
-
-1. **Phase 1 (Negative collection)**: xBD 8 イベントで negative_pre_pre + negative_post_post 各1ペア + cloud_blocked 5-10件 を annotate UI で発見 (~1日)
-2. **Phase 2 (Positive xBD discovery)** 完了: 残り 6 イベントで positive ペアを発見 (~1日、既に santa_rosa/palu/florence 確認済)
-3. **Phase 3 + Phase 4 を統合スクリプト化** (`scripts/build_and_warm.py`、~200行)
-   - Phase 1, 2 結果から canonical yaml を auto 生成
-   - 即座に 10m 解像度で pre-warm
-   - 失敗ケースは log → 手動修正フィードバック
-   - 30km @ 10m で容量 ~12GB
-4. **Phase 5 を本格的に**: ~80 trace を 1 週間かけて録画 (1 ケース 5-10 分、positive は分析厚く、negative は drop で短く)
-5. **Phase 6** は別タスク (Kaggle GPU 用、別 repo)
+| Earthdata 認証 | OAuth token の管理。`.env` に置いて gitignore |
+| MCD64A1 の lag | 月次配信、最新月は 2-3週遅れ。最新event 取りたい時は FIRMS で代替 |
+| Sentinel-2 タイル境界 nodata | 旧 DM3 で問題化した nodata>50% を Phase 2 probe で同様に弾く |
+| event_type の多様性 | wildfire 偏重だと train が "burn detector" になりがち。catalog 段で type 比率を制御 |
+| GT polygon 解像度 | MCD64A1 500m 単位なので、10m S2 と比べると粗い。pixel-perfect な metric は不可、area-overlap で評価 |
 
 ---
 
 ## 関連ドキュメント
 
-- [ARCHITECTURE.md](ARCHITECTURE.md): 全体システム構成
-- [SPECTRAL_INDEX_GUIDE.md](SPECTRAL_INDEX_GUIDE.md): index の物理的意味と読み方
+- [SPECTRAL_INDEX_GUIDE.md](SPECTRAL_INDEX_GUIDE.md): NBR/NDVI/MNDWI/NDBI の物理的意味と読み方
 - [TOOL_SPEC.md](TOOL_SPEC.md): tool スキーマ
-- [EVAL_DATA_DESIGN.md](EVAL_DATA_DESIGN.md): 評価データ設計 (本ドキュメントと役割整理が必要 — TODO)
+- [ARCHITECTURE.md](ARCHITECTURE.md): system 構成
+- [REMOTE_DEPLOY.md](REMOTE_DEPLOY.md): リモートサーバ構築手順

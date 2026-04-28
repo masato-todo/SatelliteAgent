@@ -18,6 +18,8 @@ export async function invokeTool(toolName, args) {
       after_key:  state.afterKey,
       tool_name:  toolName,
       arguments:  args,
+      provider:   state.vlmProvider || null,
+      model:      state.vlmModel    || null,
     }),
   });
   if (!res.ok) {

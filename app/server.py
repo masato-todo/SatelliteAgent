@@ -31,6 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from agent.react_loop import run_react
+from agent.react_loop_openai import run_react_openai
 from agent.providers import GeminiProvider
 from simsat_client import fetch_sentinel_image, SimSatError
 from tools.stubs import STUB_TOOLS
@@ -44,6 +45,7 @@ from tools.spectral import (
 from tools.scorer import make_get_change_stats
 from tools.quality import assess_image_quality_impl, STATS_SCHEMA
 from tools.classifier_gemini import make_classify_change as make_classify_change_gemini
+from tools.classifier_openai import make_classify_change as make_classify_change_openai
 
 
 def _build_provider():
@@ -60,6 +62,44 @@ def _build_provider():
 PROVIDER = _build_provider()
 
 
+def _load_providers_config(app_dir: Path) -> list[dict]:
+    path = app_dir.parent / "config" / "providers.yaml"
+    if not path.exists():
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+        return doc.get("providers") or []
+    except Exception as e:
+        print(f"[startup] WARN: failed to load providers.yaml: {e}")
+        return []
+
+
+def _make_classify_change(before_path: str, after_path: str,
+                          provider_name: str | None, model: str | None) -> Callable:
+    """Resolve provider config + return classify_change callable."""
+    cfg = next((p for p in PROVIDERS_CFG if p.get("name") == provider_name), None)
+    if cfg is None:
+        # Fall back to legacy Gemini provider built from env
+        return make_classify_change_gemini(before_path, after_path, PROVIDER)
+    kind = cfg.get("kind")
+    chosen_model = model or cfg.get("default_model")
+    if kind == "gemini":
+        if PROVIDER is None:
+            return make_classify_change_gemini(before_path, after_path, None)
+        # Override model for this call
+        bound = type(PROVIDER)(model=chosen_model) if chosen_model else PROVIDER
+        return make_classify_change_gemini(before_path, after_path, bound)
+    if kind == "openai_compat":
+        api_key_env = cfg.get("api_key_env")
+        api_key = os.environ.get(api_key_env, "dummy") if api_key_env else "dummy"
+        return make_classify_change_openai(
+            before_path, after_path,
+            base_url=cfg["base_url"], model=chosen_model, api_key=api_key,
+        )
+    return make_classify_change_gemini(before_path, after_path, None)
+
+
 APP_DIR = Path(__file__).parent
 STATIC_DIR = APP_DIR / "static"
 # Cache directory is overridable so the same code can write to a network
@@ -67,14 +107,21 @@ STATIC_DIR = APP_DIR / "static"
 # Defaults to repo-local data/scenarios for development.
 CACHE_DIR = Path(os.environ.get("SAT_CACHE_DIR", APP_DIR.parent / "data" / "scenarios"))
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+DERIVED_DIR = Path(os.environ.get("SAT_DERIVED_DIR", APP_DIR.parent / "data" / "derived"))
+DERIVED_DIR.mkdir(parents=True, exist_ok=True)
 TRACES_DIR = Path(os.environ.get("SAT_TRACES_DIR", APP_DIR.parent / "data" / "traces" / "human"))
 TRACES_DIR.mkdir(parents=True, exist_ok=True)
 print(f"[startup] CACHE_DIR = {CACHE_DIR}")
 print(f"[startup] TRACES_DIR = {TRACES_DIR}")
 
+PROVIDERS_CFG = _load_providers_config(APP_DIR)
+print(f"[startup] VLM providers: {[p.get('name') for p in PROVIDERS_CFG]}")
+
 
 def build_tool_registry(before_path: str, after_path: str,
-                        context: dict[str, Any] | None = None) -> dict[str, Callable]:
+                        context: dict[str, Any] | None = None,
+                        provider_name: str | None = None,
+                        model: str | None = None) -> dict[str, Callable]:
     """Per-request tool registry shared by agent (ReAct) and human annotation.
 
     `context` carries (lat, lon, size_km, before_ts, after_ts) so that the
@@ -84,8 +131,7 @@ def build_tool_registry(before_path: str, after_path: str,
     reg: dict[str, Callable] = {**STUB_TOOLS}
     reg["zoom_in"] = make_zoom_in(before_path, after_path)
     reg["capture_crop"] = make_capture_crop(before_path, after_path)
-    # classify_change: Gemini interim until team's LFM2-VL classifier LoRA ships
-    reg["classify_change"] = make_classify_change_gemini(before_path, after_path, PROVIDER)
+    reg["classify_change"] = _make_classify_change(before_path, after_path, provider_name, model)
     if context:
         reg["fetch_band"]          = make_fetch_band(**context)
         reg["false_color"]         = make_false_color(**context)
@@ -536,6 +582,61 @@ _n_neg = sum(1 for c in DM3_CASES if c.get("is_negative"))
 print(f"[startup] DisasterM3 cases loaded: {len(DM3_CASES)} (positive/neutral={_n_pos}, negative={_n_neg})")
 
 
+def _load_scene_catalog() -> list[dict[str, Any]]:
+    """Load Phase 1 scene_catalog.yaml entries (MCD64A1 etc.) and convert to
+    case-shape compatible with the DM3 dropdown. Re-read on every API call so
+    appending to the catalog (via mcd64a1_smoke.py --save) is picked up live.
+    """
+    from datetime import date, timedelta
+    path = APP_DIR.parent / "data" / "scene_catalog.yaml"
+    if not path.exists():
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+    except Exception as e:
+        print(f"[startup] WARN: failed to load scene_catalog.yaml: {e}")
+        return []
+    out: list[dict[str, Any]] = []
+    for s in doc.get("scenes", []):
+        try:
+            lat = float(s["lat"]); lon = float(s["lon"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        period = s.get("event_period") or []
+        ev_start = period[0] if len(period) >= 1 else None
+        ev_end   = period[1] if len(period) >= 2 else ev_start
+        # 60d before period start / 60d after period end as default Before/After.
+        try:
+            d_start = date.fromisoformat(ev_start)
+            d_end   = date.fromisoformat(ev_end)
+            before_d = (d_start - timedelta(days=60)).isoformat()
+            after_d  = (d_end   + timedelta(days=60)).isoformat()
+        except Exception:
+            before_d = ev_start
+            after_d  = ev_end
+        et = s.get("event_type", "wildfire")
+        out.append({
+            "id":            s["id"],
+            "source":        s.get("source", "Catalog"),
+            "event":         s["id"],
+            "disaster_type": et,
+            "mapped_class":  "fire" if et == "wildfire" else et,
+            "capture_date":  ev_end,
+            "before_date":   before_d,
+            "after_date":    after_d,
+            "lat": lat, "lon": lon,
+            "location":      f"{s.get('source','?')} burn ({s.get('affected_area_km2', '?')} km²)",
+            "image":         "",
+            "size_km":       10.0,
+            "precise":       True,
+            "event_start":   ev_start,
+            "event_end":     ev_end,
+            "event_name":    f"{s.get('affected_area_km2','?')} km² burn",
+        })
+    return out
+
+
 # ---- xBD per-building damage polygons (for After/Before image overlay) ----
 
 DAMAGE_SUBTYPES = ("destroyed", "major-damage", "minor-damage")
@@ -603,7 +704,64 @@ def _parse_wkt_polygon(wkt: str) -> list[tuple[float, float]] | None:
 
 @app.get("/api/disasterm3/cases")
 def api_dm3_cases() -> dict[str, Any]:
-    return {"count": len(DM3_CASES), "cases": DM3_CASES}
+    # Cache hit detection is loose: count any cached scene at this case's
+    # (lat, lon) regardless of size/date/resolution. The frontend uses this
+    # only as an "explored / not explored" hint; the actual fetch still keys
+    # on the exact (lat, lon, date, size, res) tuple.
+    by_latlon: dict[tuple[float, float], int] = {}
+    for meta_p in CACHE_DIR.glob("*.meta.json"):
+        try:
+            d = json.loads(meta_p.read_text())
+        except Exception:
+            continue
+        req = d.get("request") or {}
+        lat = req.get("lat"); lon = req.get("lon")
+        if lat is None or lon is None:
+            continue
+        png = CACHE_DIR / f"{meta_p.stem.replace('.meta','')}.png"
+        if not png.exists():
+            continue
+        by_latlon[(round(lat, 4), round(lon, 4))] = by_latlon.get((round(lat, 4), round(lon, 4)), 0) + 1
+
+    # Collect Phase 2 results from canonical_dataset.yaml as a separate
+    # field so the UI can offer a "Use cache" dropdown distinct from the
+    # default Fetch Images action (which keeps DM3-original size/dates).
+    canonical_path = APP_DIR.parent / "data" / "canonical_dataset.yaml"
+    canonical_by_id: dict[str, list[dict]] = {}
+    if canonical_path.exists():
+        try:
+            with open(canonical_path, encoding="utf-8") as f:
+                doc = yaml.safe_load(f) or {}
+            for e in doc.get("cases", []):
+                cid = e.get("id")
+                if not cid:
+                    continue
+                req = e.get("request") or {}
+                canonical_by_id.setdefault(cid, []).append({
+                    "size_km":     e.get("size_km"),
+                    "before_date": req.get("before_date"),
+                    "after_date":  req.get("after_date"),
+                    "before_resolved": (e.get("expected_resolved") or {}).get("before_datetime"),
+                    "after_resolved":  (e.get("expected_resolved") or {}).get("after_datetime"),
+                })
+        except Exception:
+            pass
+
+    all_cases = DM3_CASES + _load_scene_catalog()
+    out: list[dict[str, Any]] = []
+    for c in all_cases:
+        lat = c.get("lat"); lon = c.get("lon")
+        n_cached = 0
+        if lat is not None and lon is not None:
+            n_cached = by_latlon.get((round(lat, 4), round(lon, 4)), 0)
+        out.append({
+            **c,
+            "cached_count":    n_cached,
+            "cached_before":   n_cached >= 2,
+            "cached_after":    n_cached >= 2,
+            "canonical_pairs": canonical_by_id.get(c.get("id", ""), []),
+        })
+    return {"count": len(out), "cases": out}
 
 
 @app.get("/api/xbd/damage_overlay")
@@ -682,6 +840,7 @@ class BeforeCandidatesRequest(BaseModel):
     # current After (10-day backward-only window → overlapping hits).
     offsets_days: list[int] = Field(default_factory=lambda: [14, 30, 60, 90, 180, 365])
     window_days: int = Field(default=10, ge=1, le=60)
+    resolution_meters: int = Field(default=10, ge=10, le=120)
 
 
 def _parse_date_utc(s: str):
@@ -709,7 +868,8 @@ def api_before_candidates(req: BeforeCandidatesRequest) -> dict[str, Any]:
 
     def probe(offset_days: int) -> dict[str, Any]:
         target = (ref - timedelta(days=offset_days)).strftime("%Y-%m-%d")
-        key, meta = _fetch_one(req.lat, req.lon, target, req.size_km, req.window_days)
+        key, meta = _fetch_one(req.lat, req.lon, target, req.size_km, req.window_days,
+                               req.resolution_meters)
         return {
             "target_date": target,
             "offset_days": offset_days,
@@ -717,7 +877,7 @@ def api_before_candidates(req: BeforeCandidatesRequest) -> dict[str, Any]:
             "meta": meta,
         }
 
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=2) as ex:
         results = list(ex.map(probe, req.offsets_days))
 
     return {"candidates": results, "anchor_date": ref.strftime("%Y-%m-%d")}
@@ -735,6 +895,7 @@ class AfterCandidatesRequest(BaseModel):
     # +14, +30 = post-event with cleaner skies (better for fires/burn scars).
     offsets_days: list[int] = Field(default_factory=lambda: [0, 3, 7, 14, 21, 30, 45])
     window_days: int = Field(default=10, ge=1, le=60)
+    resolution_meters: int = Field(default=10, ge=10, le=120)
 
 
 @app.post("/api/after_candidates")
@@ -753,7 +914,8 @@ def api_after_candidates(req: AfterCandidatesRequest) -> dict[str, Any]:
 
     def probe(offset_days: int) -> dict[str, Any]:
         target = (ref + timedelta(days=offset_days)).strftime("%Y-%m-%d")
-        key, meta = _fetch_one(req.lat, req.lon, target, req.size_km, req.window_days)
+        key, meta = _fetch_one(req.lat, req.lon, target, req.size_km, req.window_days,
+                               req.resolution_meters)
         return {
             "target_date": target,
             "offset_days": offset_days,
@@ -761,7 +923,7 @@ def api_after_candidates(req: AfterCandidatesRequest) -> dict[str, Any]:
             "meta": meta,
         }
 
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=2) as ex:
         results = list(ex.map(probe, req.offsets_days))
 
     return {"candidates": results, "anchor_date": ref.strftime("%Y-%m-%d")}
@@ -821,33 +983,233 @@ def api_fetch(req: FetchRequest) -> dict[str, Any]:
     }
 
 
+class SavePairRequest(BaseModel):
+    scene_id: str
+    lat: float
+    lon: float
+    before_date: str
+    after_date: str
+    size_km: float
+    # When the UI has resolved keys (e.g., from a candidate click that may have
+    # used a different target_date than what's now in before_date), pass them
+    # directly so the save bypasses re-computing the cache key.
+    before_key: str | None = None
+    after_key: str | None = None
+    label: str | None = None
+    event_type: str | None = None
+    event_start: str | None = None
+    event_end: str | None = None
+    event_name: str | None = None
+    is_negative: bool = False
+    negative_type: str | None = None
+    expected_action: str | None = None
+
+
+@app.post("/api/scene/save_pair")
+def api_save_pair(req: SavePairRequest) -> dict[str, Any]:
+    """Append the current Before/After pair to canonical_dataset.yaml + copy
+    PNGs into data/curated_pairs/<scene_id>/ for easy filesystem inspection."""
+    canonical_path = APP_DIR.parent / "data" / "canonical_dataset.yaml"
+    curated_dir   = APP_DIR.parent / "data" / "curated_pairs" / req.scene_id
+    curated_dir.mkdir(parents=True, exist_ok=True)
+
+    bk = req.before_key or _cache_key(req.lat, req.lon, _normalize_ts(req.before_date), req.size_km, 10)
+    ak = req.after_key  or _cache_key(req.lat, req.lon, _normalize_ts(req.after_date),  req.size_km, 10)
+    bp = CACHE_DIR / f"{bk}.png"; ap = CACHE_DIR / f"{ak}.png"
+    bm = _load_meta(bk) or {}
+    am = _load_meta(ak) or {}
+    if not (bp.exists() and ap.exists()):
+        raise HTTPException(400, "Before/After not in cache yet — press Fetch Images first")
+
+    # Copy PNGs + sidecar to curated dir
+    import shutil
+    for src, name in ((bp, "before.png"), (ap, "after.png")):
+        shutil.copy2(src, curated_dir / name)
+    with open(curated_dir / "meta.yaml", "w", encoding="utf-8") as f:
+        yaml.safe_dump({
+            "scene_id":   req.scene_id,
+            "type":       "negative" if req.is_negative else "positive",
+            "expected_action": (req.expected_action or "drop") if req.is_negative else "submit_to_ground",
+            "negative_type":   req.negative_type if req.is_negative else None,
+            "lat":        req.lat,
+            "lon":        req.lon,
+            "size_km":    req.size_km,
+            "before":     {"date": req.before_date, "key": bk, "datetime": bm.get("datetime"), "stats": bm.get("stats")},
+            "after":      {"date": req.after_date,  "key": ak, "datetime": am.get("datetime"), "stats": am.get("stats")},
+            "event":      {"type": req.event_type, "start": req.event_start, "end": req.event_end, "name": req.event_name},
+            "saved_at":   datetime.now(timezone.utc).isoformat(),
+        }, f, sort_keys=False, allow_unicode=True)
+
+    # Append/replace entry in canonical_dataset.yaml
+    if canonical_path.exists():
+        with open(canonical_path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+    else:
+        doc = {}
+    cases = doc.get("cases") or []
+    cases = [c for c in cases if c.get("id") != req.scene_id]
+    # The canonical entry's request.before_date/after_date must be the *target*
+    # date that produced the cache key (not the resolved S2 datetime), so that
+    # auto_phase2 / Use cache can re-compute the same key. Pull from meta when
+    # available; fall back to the form value.
+    def _date_from_ts(meta, fallback):
+        ts = (meta.get("request") or {}).get("ts")
+        return ts.split("T", 1)[0] if isinstance(ts, str) and "T" in ts else fallback
+    canonical_before_date = _date_from_ts(bm, req.before_date)
+    canonical_after_date  = _date_from_ts(am, req.after_date)
+    entry = {
+        "id":      req.scene_id,
+        "label":   req.label or req.event_type or ("no_change" if req.is_negative else "wildfire"),
+        "type":    "negative" if req.is_negative else "positive",
+        "lat":     float(req.lat),
+        "lon":     float(req.lon),
+        "size_km": float(req.size_km),
+        "request": {"before_date": canonical_before_date, "after_date": canonical_after_date, "window_days": 30},
+        "expected_resolved": {"before_datetime": bm.get("datetime"), "after_datetime": am.get("datetime")},
+        "event":   {"name": req.event_name, "period": [req.event_start, req.event_end]},
+    }
+    if req.is_negative:
+        entry["expected_action"] = req.expected_action or "drop"
+        if req.negative_type:
+            entry["negative_type"] = req.negative_type
+    cases.append(entry)
+    doc["cases"] = cases
+    with open(canonical_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(doc, f, sort_keys=False, allow_unicode=True)
+
+    return {
+        "saved_dir": str(curated_dir.relative_to(APP_DIR.parent)),
+        "canonical_entries": len(cases),
+        "before_key": bk, "after_key": ak,
+    }
+
+
+@app.get("/api/scene/burn_polygon/{scene_id}")
+def api_scene_burn_polygon(scene_id: str):
+    """Return the GT burn polygon for an MCD64A1 catalog scene."""
+    if not all(c.isalnum() or c in "_+-" for c in scene_id):
+        raise HTTPException(400, "invalid id")
+    p = APP_DIR.parent / "data" / "gt_polygons" / f"{scene_id}.geojson"
+    if not p.exists():
+        raise HTTPException(404, "polygon not found")
+    return FileResponse(p, media_type="application/geo+json")
+
+
 @app.get("/api/image/{key}")
 def api_image(key: str):
     if not key.replace("_", "").isalnum():
         raise HTTPException(400, "invalid key")
-    path = CACHE_DIR / f"{key}.png"
-    if not path.exists():
-        raise HTTPException(404, "image not found")
-    return FileResponse(path, media_type="image/png")
+    for d in (CACHE_DIR, DERIVED_DIR):
+        path = d / f"{key}.png"
+        if path.exists():
+            return FileResponse(path, media_type="image/png")
+    raise HTTPException(404, "image not found")
+
+
+AGENT_TRACES_DIR = APP_DIR.parent / "data" / "traces" / "agent"
+AGENT_TRACES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _lookup_canonical_entry(scene_id: str | None) -> dict[str, Any]:
+    if not scene_id:
+        return {}
+    canonical_path = APP_DIR.parent / "data" / "canonical_dataset.yaml"
+    if not canonical_path.exists():
+        return {}
+    try:
+        with open(canonical_path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+        for c in doc.get("cases", []):
+            if c.get("id") == scene_id:
+                return c
+    except Exception:
+        pass
+    return {}
+
+
+def _save_agent_trace(scene_id: str, events: list[dict], provider: str | None,
+                      model: str | None, before_key: str, after_key: str) -> str | None:
+    if not scene_id or not events:
+        return None
+    canon = _lookup_canonical_entry(scene_id)
+    expected_action = canon.get("expected_action") or (
+        "drop" if canon.get("type") == "negative" else "submit_to_ground"
+    )
+    final_ev = next((e for e in reversed(events) if e.get("type") == "final"), None)
+    actual_action = (final_ev or {}).get("name") or (final_ev or {}).get("action")
+    gt_match = (actual_action == expected_action) if final_ev else None
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    fname = f"{_safe_slug(scene_id)}__{ts}.yaml"
+    path = AGENT_TRACES_DIR / fname
+    doc = {
+        "metadata": {
+            "scene_id":         scene_id,
+            "scenario_type":    canon.get("type"),
+            "expected_action":  expected_action,
+            "expected_class":   canon.get("label"),
+            "lat":              canon.get("lat"),
+            "lon":              canon.get("lon"),
+            "size_km":          canon.get("size_km"),
+            "before_date":      (canon.get("request") or {}).get("before_date"),
+            "after_date":       (canon.get("request") or {}).get("after_date"),
+            "before_key":       before_key,
+            "after_key":        after_key,
+            "provider":         provider,
+            "model":            model,
+            "collected_at":     datetime.now(timezone.utc).isoformat(),
+        },
+        "events": events,
+        "final":  final_ev,
+        "gt_match": gt_match,
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(doc, f, sort_keys=False, allow_unicode=True)
+    return str(path.relative_to(APP_DIR.parent))
 
 
 @app.get("/api/run_agent")
-def api_run_agent(before_key: str, after_key: str):
+def api_run_agent(before_key: str, after_key: str,
+                  provider: str | None = None, model: str | None = None,
+                  scene_id: str | None = None):
     before_path = CACHE_DIR / f"{before_key}.png"
     after_path  = CACHE_DIR / f"{after_key}.png"
     if not before_path.exists() or not after_path.exists():
         raise HTTPException(400, "fetch images first")
 
+    cfg = next((p for p in PROVIDERS_CFG if p.get("name") == provider), None)
     context = _context_from_keys(before_key, after_key)
-    tool_registry = build_tool_registry(str(before_path), str(after_path), context)
+    tool_registry = build_tool_registry(str(before_path), str(after_path), context,
+                                        provider_name=provider, model=model)
 
     def generate():
+        events_collected: list[dict] = []
         try:
-            for event in run_react(str(before_path), str(after_path),
-                                   provider=PROVIDER, tool_registry=tool_registry):
+            if cfg and cfg.get("kind") == "openai_compat":
+                api_key_env = cfg.get("api_key_env")
+                api_key = os.environ.get(api_key_env, "dummy") if api_key_env else "dummy"
+                events = run_react_openai(
+                    str(before_path), str(after_path),
+                    base_url=cfg["base_url"],
+                    model=model or cfg.get("default_model"),
+                    api_key=api_key,
+                    tool_registry=tool_registry,
+                )
+            else:
+                events = run_react(str(before_path), str(after_path),
+                                   provider=PROVIDER, tool_registry=tool_registry)
+            for event in events:
+                events_collected.append(event)
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'text': f'agent crashed: {type(e).__name__}: {e}'})}\n\n"
+            err = {"type": "error", "text": f"agent crashed: {type(e).__name__}: {e}"}
+            events_collected.append(err)
+            yield f"data: {json.dumps(err)}\n\n"
+        finally:
+            saved = _save_agent_trace(scene_id, events_collected, provider, model,
+                                      before_key, after_key)
+            if saved:
+                yield f"data: {json.dumps({'type': 'note', 'text': f'trace saved → {saved}'}, ensure_ascii=False)}\n\n"
         yield "event: end\ndata: {}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
@@ -860,6 +1222,22 @@ class ToolInvokeRequest(BaseModel):
     after_key: str
     tool_name: str
     arguments: dict[str, Any] = {}
+    provider: str | None = None
+    model: str | None = None
+
+
+@app.get("/api/providers")
+def api_providers() -> dict[str, Any]:
+    """Expose VLM provider/model catalog so the UI can render selectors."""
+    out = []
+    for p in PROVIDERS_CFG:
+        out.append({
+            "name":          p.get("name"),
+            "kind":          p.get("kind"),
+            "models":        p.get("models") or [],
+            "default_model": p.get("default_model"),
+        })
+    return {"providers": out}
 
 
 @app.post("/api/tool/invoke")
@@ -870,7 +1248,8 @@ def api_tool_invoke(req: ToolInvokeRequest) -> dict[str, Any]:
         raise HTTPException(400, "images not found; fetch first")
 
     context = _context_from_keys(req.before_key, req.after_key)
-    registry = build_tool_registry(str(before_path), str(after_path), context)
+    registry = build_tool_registry(str(before_path), str(after_path), context,
+                                   provider_name=req.provider, model=req.model)
     if req.tool_name not in registry:
         raise HTTPException(400, f"unknown tool: {req.tool_name}")
 
@@ -923,9 +1302,13 @@ def api_trace_save(req: TraceSaveRequest) -> dict[str, Any]:
 
 @app.get("/api/traces")
 def api_list_traces() -> dict[str, Any]:
-    files = sorted(TRACES_DIR.glob("*.yaml"), key=lambda p: p.stat().st_mtime, reverse=True)
+    files: list[tuple[Path, str]] = []
+    for d, kind in ((TRACES_DIR, "human"), (AGENT_TRACES_DIR, "agent")):
+        for p in d.glob("*.yaml"):
+            files.append((p, kind))
+    files.sort(key=lambda fk: fk[0].stat().st_mtime, reverse=True)
     out = []
-    for f in files[:200]:
+    for f, kind in files[:300]:
         try:
             with open(f, encoding="utf-8") as fh:
                 doc = yaml.safe_load(fh) or {}
@@ -933,29 +1316,32 @@ def api_list_traces() -> dict[str, Any]:
             final = doc.get("final", {}) if isinstance(doc, dict) else {}
             events = doc.get("events", []) if isinstance(doc, dict) else []
             out.append({
-                "filename": f.name,
-                "scenario_id": meta.get("scenario_id", "?"),
-                "profile": meta.get("profile", "?"),
-                "annotator": meta.get("annotator", "?"),
-                "created_at": meta.get("created_at", ""),
-                "final_action": final.get("action", "?"),
+                "filename":     f.name,
+                "kind":         kind,
+                "scenario_id":  meta.get("scenario_id") or meta.get("scene_id") or "?",
+                "profile":      meta.get("profile") or meta.get("provider") or "?",
+                "annotator":    meta.get("annotator") or meta.get("model") or "?",
+                "created_at":   meta.get("created_at") or meta.get("collected_at") or "",
+                "final_action": final.get("action") or final.get("name") or "?",
                 "final_change_type": final.get("change_type"),
-                "n_events": len(events),
-                "size_bytes": f.stat().st_size,
+                "expected_action":   meta.get("expected_action"),
+                "gt_match":          doc.get("gt_match") if isinstance(doc, dict) else None,
+                "n_events":     len(events),
+                "size_bytes":   f.stat().st_size,
             })
         except Exception as e:
-            out.append({"filename": f.name, "error": str(e)})
+            out.append({"filename": f.name, "kind": kind, "error": str(e)})
     return {"traces": out}
 
 
 def _resolve_trace_path(filename: str) -> Path:
-    # Reject anything that could escape TRACES_DIR.
     if "/" in filename or "\\" in filename or ".." in filename or not filename.endswith(".yaml"):
         raise HTTPException(400, f"invalid filename: {filename}")
-    p = TRACES_DIR / filename
-    if not p.exists() or not p.is_file():
-        raise HTTPException(404, f"trace not found: {filename}")
-    return p
+    for d in (TRACES_DIR, AGENT_TRACES_DIR):
+        p = d / filename
+        if p.exists() and p.is_file():
+            return p
+    raise HTTPException(404, f"trace not found: {filename}")
 
 
 @app.get("/api/traces/{filename}")
@@ -985,4 +1371,4 @@ def index():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=7860)
+    uvicorn.run(app, host=os.environ.get("APP_HOST", "127.0.0.1"), port=int(os.environ.get("APP_PORT", "7860")))
