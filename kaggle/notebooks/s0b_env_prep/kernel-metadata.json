@@ -1,0 +1,16 @@
+{
+  "id": "titanic12/satelliteagent-env-prep",
+  "title": "satelliteagent-env-prep",
+  "code_file": "satelliteagent-env-prep.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "keywords": [],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": [],
+  "model_sources": []
+}

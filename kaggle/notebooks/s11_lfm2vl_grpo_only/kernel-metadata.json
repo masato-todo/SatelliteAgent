@@ -1,0 +1,24 @@
+{
+  "id": "titanic12/prime-rl-s11-lfm2vl-grpo-only",
+  "title": "prime-rl-s11-lfm2vl-grpo-only",
+  "code_file": "prime-rl-s11-lfm2vl-grpo-only.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "accelerator": "NvidiaRtxPro6000",
+  "enable_tpu": false,
+  "enable_internet": false,
+  "keywords": [],
+  "dataset_sources": [
+    "titanic12/satelliteagent-raw-v1"
+  ],
+  "kernel_sources": [
+    "titanic12/prime-rl-offline-prep",
+    "titanic12/satelliteagent-env-prep"
+  ],
+  "competition_sources": [
+    "nvidia-nemotron-model-reasoning-challenge"
+  ],
+  "model_sources": []
+}
