@@ -9,6 +9,12 @@ pip install kaggle
 chmod 600 ~/.kaggle/kaggle.json
 ```
 
+**重要**: RTX 6000 Pro を使うには Kaggle で
+[NVIDIA Nemotron Model Reasoning Challenge](https://www.kaggle.com/competitions/nvidia-nemotron-model-reasoning-challenge)
+に **参加 (Join)** が必須。参加しないと `kernel-metadata.json` の
+`competition_sources` 経由でアクセラレータが選べず push が失敗する
+(`enable_internet: false` での RTX 6000 Pro 利用はこのコンペ枠を使う仕組み)。
+
 ## 2. 既存ノートブックを回す
 
 各 stage notebook には `kernel-metadata.json` が付属。push するだけ:
