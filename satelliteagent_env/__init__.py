@@ -245,7 +245,12 @@ def _real_dataset(data_root: str) -> "Dataset":
 
         rows.append({
             "prompt": [
-                {"role": "system", "content": _REAL_SYSTEM_PROMPT},
+                # All `content` fields are lists of parts -- HF datasets rejects
+                # mixed string/list content across rows of the same column with
+                # "cannot mix list and non-list, non-null values".
+                {"role": "system", "content": [
+                    {"type": "text", "text": _REAL_SYSTEM_PROMPT},
+                ]},
                 {"role": "user", "content": [
                     {"type": "text",  "text": "Before image (previous satellite pass over this location):"},
                     {"type": "image", "path": before},
