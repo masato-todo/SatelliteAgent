@@ -170,18 +170,156 @@ def _build_env_class():
     return _SatelliteToolEnv
 
 
-def load_environment(toy: bool = True, **kwargs: Any) -> "vf.Environment":
+# --- Real dataset (Phase 5b: read raw canonical_dataset.yaml directly) ----
+
+# Mirrors agent/react_loop.py SYSTEM_PROMPT so the env runs the model under
+# the same system prompt as production RunAgent.
+_REAL_SYSTEM_PROMPT = """You are an onboard satellite operator agent running on NVIDIA Orin 16GB.
+
+You are shown a Sentinel-2 image pair (before = previous pass, after = current pass) of the same
+location. Your job is to decide what to report to the ground station.
+
+Goals:
+- Minimize downlink bandwidth usage while preserving critical information.
+- Attach the raw image only when text alone cannot convey the situation.
+- Always terminate with exactly one of: submit_to_ground(...) or drop().
+
+Style:
+- Think briefly in natural language before each tool call (one sentence).
+- One tool call per step.
+- Stop as soon as you have enough information.
+"""
+
+
+def _parse_burn_area_km2(event_name: str | None) -> float | None:
+    """Extract km² from an MCD64A1 event name like '18.03 km² burn'."""
+    if not event_name:
+        return None
+    import re
+    m = re.search(r"(\d+(?:\.\d+)?)\s*km", event_name)
+    return float(m.group(1)) if m else None
+
+
+def _derive_expected(case: dict) -> dict:
+    """Map a canonical_dataset.yaml row to a uniform `expected` dict.
+
+    Positives in raw v1 only carry event area; we derive urgency / attach /
+    change_type heuristically so action_match works today and the optional
+    validators have something to grade once we turn them on. Negatives carry
+    `expected_action: drop` directly.
+    """
+    if case.get("type") == "positive":
+        area_km2 = _parse_burn_area_km2((case.get("event") or {}).get("name")) or 0.0
+        urgency = "high" if area_km2 >= 100 else ("medium" if area_km2 >= 10 else "low")
+        return {
+            "action": "submit_to_ground",
+            "attach_image": area_km2 >= 50.0,
+            "urgency": urgency,
+            "change_type": "wildfire",
+        }
+    # negative
+    return {
+        "action": case.get("expected_action", "drop"),
+        "attach_image": False,
+        "urgency": "low",
+        "change_type": "none",
+    }
+
+
+def _real_dataset(data_root: str) -> "Dataset":
+    import yaml
+    from datasets import Dataset
+
+    canonical_path = f"{data_root}/canonical_dataset.yaml"
+    with open(canonical_path) as f:
+        canonical = yaml.safe_load(f)
+
+    rows: list[dict] = []
+    for case in canonical.get("cases") or []:
+        case_id = case["id"]
+        case_dir = f"{data_root}/curated_pairs/{case_id}"
+        before = f"{case_dir}/before.png"
+        after  = f"{case_dir}/after.png"
+        resolved = case.get("expected_resolved") or {}
+        expected = _derive_expected(case)
+
+        rows.append({
+            "prompt": [
+                {"role": "system", "content": _REAL_SYSTEM_PROMPT},
+                {"role": "user", "content": [
+                    {"type": "text",  "text": "Before image (previous satellite pass over this location):"},
+                    {"type": "image", "path": before},
+                    {"type": "text",  "text": "After image (current pass, same location):"},
+                    {"type": "image", "path": after},
+                    {"type": "text",  "text": (
+                        "Analyze the pair and decide what to report to ground. "
+                        "Use your tools. End with submit_to_ground(...) or drop()."
+                    )},
+                ]},
+            ],
+            "info": {
+                "case_id": case_id,
+                "type": case.get("type"),
+                "context": {
+                    "lat": case.get("lat"),
+                    "lon": case.get("lon"),
+                    "size_km": case.get("size_km"),
+                    "before_ts": resolved.get("before_datetime"),
+                    "after_ts":  resolved.get("after_datetime"),
+                },
+                "expected": expected,
+            },
+        })
+
+    return Dataset.from_list(rows)
+
+
+def _real_rubric(weights: dict | None = None) -> "vf.Rubric":
+    """Build the Rubric from eval.validators.common. Phase 5b smoke uses
+    only `action_match`; the optional validators are wired but weight=0 so
+    they don't affect learning until we turn them on explicitly.
+    """
+    import verifiers as vf
+    from eval.validators.common import (
+        action_match,
+        attach_image_match,
+        urgency_match,
+        change_type_match,
+    )
+
+    w = {"action": 1.0, "attach": 0.0, "urgency": 0.0, "change_type": 0.0}
+    if weights:
+        w.update(weights)
+    return vf.Rubric(
+        funcs=[action_match, attach_image_match, urgency_match, change_type_match],
+        weights=[w["action"], w["attach"], w["urgency"], w["change_type"]],
+    )
+
+
+def load_environment(
+    toy: bool = True,
+    data_root: str | None = None,
+    rubric_weights: dict | None = None,
+    **kwargs: Any,
+) -> "vf.Environment":
     """Entry point invoked by `verifiers.load_environment("satelliteagent_env")`.
 
     Args:
-        toy: when True (default) use the hand-crafted submit-or-drop toy
-            dataset to exercise the tool-call + reward pipeline. When False
-            use the (Phase 2 TODO) real triplet data + full tool set.
+        toy: when True use the hand-crafted submit-or-drop toy dataset.
+            When False, read `canonical_dataset.yaml` from `data_root` and
+            build the real Phase 5b dataset (Phase 2 still needs to grow
+            negative coverage and add precompute_tool_responses, but the
+            shape is right for an end-to-end smoke).
+        data_root: required when toy=False. Path to the directory containing
+            `canonical_dataset.yaml` and `curated_pairs/<case_id>/...`.
+            On Kaggle this is `/kaggle/input/satelliteagent-raw-v1`.
+        rubric_weights: optional dict overriding default per-validator weights
+            (keys: "action", "attach", "urgency", "change_type").
     """
     SatelliteToolEnv = _build_env_class()
+    tools: list[Callable] = [_expose_for_vf(submit_to_ground), _expose_for_vf(drop)]
 
     if toy:
-        tools: list[Callable] = [_expose_for_vf(submit_to_ground), _expose_for_vf(drop)]
         return SatelliteToolEnv(
             dataset=_toy_dataset(),
             tools=tools,
@@ -189,8 +327,12 @@ def load_environment(toy: bool = True, **kwargs: Any) -> "vf.Environment":
             max_turns=3,
         )
 
-    # Phase 2 path: real triplets + full STUB_TOOLS / real tools
-    raise NotImplementedError(
-        "Real (non-toy) env requires Phase 2 eval/cases triplets and "
-        "eval/validators/common.py to be in place."
+    if not data_root:
+        raise ValueError("load_environment(toy=False) requires data_root=<path>")
+
+    return SatelliteToolEnv(
+        dataset=_real_dataset(data_root),
+        tools=tools,
+        rubric=_real_rubric(rubric_weights),
+        max_turns=3,
     )
