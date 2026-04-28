@@ -374,5 +374,11 @@ def load_environment(
         dataset=_real_dataset(data_root),
         tools=tools,
         rubric=_real_rubric(rubric_weights),
-        max_turns=3,
+        # Terminal tools (submit_to_ground / drop) finish the case; the
+        # @vf.stop hook in _SatelliteToolEnv flips state["terminal_called"]
+        # but because update_tool_args fires inside the next iteration's
+        # env_response, the rollout still pays one extra turn before
+        # is_completed catches it. Capping max_turns at 1 forces a clean
+        # 1-turn rollout: assistant emits one terminal tool_call, env stops.
+        max_turns=1,
     )

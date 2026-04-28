@@ -11,6 +11,7 @@ The other validators are stubs we'll extend once the basic loop is healthy.
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
 TERMINAL = {"submit_to_ground", "drop"}
@@ -19,15 +20,47 @@ TERMINAL = {"submit_to_ground", "drop"}
 def _terminal_call(completion: list[Any]) -> tuple[str | None, dict | None]:
     """Pick up the first terminal tool call (submit_to_ground / drop) and
     return (name, arguments_dict). If none found, returns (None, None).
+
+    `completion` may also be a list of plain dicts (verifiers env-server form)
+    or have `tool_calls` whose entries are dicts/strings instead of attribute
+    objects, depending on how the env serialised them. We normalise here so
+    that downstream validators can treat the result as a dict.
     """
     if not isinstance(completion, list):
         return None, None
     for msg in completion:
-        tcs = getattr(msg, "tool_calls", None) or []
+        # msg can be a dict or an object; normalise tool_calls extraction
+        tcs = getattr(msg, "tool_calls", None)
+        if tcs is None and isinstance(msg, dict):
+            tcs = msg.get("tool_calls")
+        tcs = tcs or []
         for tc in tcs:
-            name = getattr(tc, "name", None)
-            if name in TERMINAL:
+            # tc can be: object with .name/.arguments, dict with name/arguments,
+            # or even a JSON string.
+            if isinstance(tc, str):
+                try:
+                    tc_obj = json.loads(tc)
+                except Exception:
+                    continue
+                name = tc_obj.get("name")
+                args = tc_obj.get("arguments") or tc_obj.get("args") or {}
+            elif isinstance(tc, dict):
+                name = tc.get("name") or (tc.get("function") or {}).get("name")
+                args = tc.get("arguments") or tc.get("args") \
+                    or (tc.get("function") or {}).get("arguments") or {}
+            else:
+                name = getattr(tc, "name", None)
                 args = getattr(tc, "args", None) or getattr(tc, "arguments", None) or {}
+
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except Exception:
+                    args = {}
+            if not isinstance(args, dict):
+                args = {}
+
+            if name in TERMINAL:
                 return name, args
     return None, None
 
