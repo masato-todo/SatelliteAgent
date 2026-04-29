@@ -217,14 +217,19 @@ def _summarize_message(msg) -> dict:
     return out
 
 
+_PRECOMPUTE_TOOL_NAMES = {
+    "compute_index", "compute_index_delta", "fetch_band", "false_color", "classify_change",
+}
+
+
 def _build_env_class(precompute_root: str | None = None):
     """Build the StatefulToolEnv subclass at call time so `verifiers` import
     is deferred. Returns the class object.
 
     Args:
         precompute_root: when set, update_tool_args injects `case_dir =
-            precompute_root/<case_id>` into every tool call so the lookup
-            tools can read per-case PNG/YAML from disk.
+            precompute_root/<case_id>` into precompute-lookup tool calls so
+            the offline tools can read per-case PNG/YAML from disk.
     """
     import verifiers as vf
     import os
@@ -237,6 +242,7 @@ def _build_env_class(precompute_root: str | None = None):
         """
 
         async def setup_state(self, state):
+            # MultiTurnEnv contract: mutate state in place; return value ignored.
             info = state.get("info") or {}
             state["scenario"] = info.get("scenario", "")
             state["expected_action"] = info.get("expected_action", "")
@@ -244,35 +250,36 @@ def _build_env_class(precompute_root: str | None = None):
             state["terminal_called"] = False
             state["terminal_action"] = None
             state["tool_call_log"] = []
-            return state
 
-        def update_tool_args(self, tool_name: str, tool_args: dict, *args, **kwargs) -> dict:
-            # verifiers' StatefulToolEnv calls this as
-            # update_tool_args(tool_name, tool_args, messages, state, **kwargs).
-            state = kwargs.get("state")
-            if state is None:
-                for a in args:
-                    if isinstance(a, dict) and ("info" in a or "expected_action" in a or "scenario" in a or "case_id" in a):
-                        state = a; break
+        def update_tool_args(
+            self,
+            tool_name: str,
+            tool_args: dict,
+            messages,
+            state,
+            **kwargs,
+        ) -> dict:
+            # case_id may be missing if setup_state hasn't run for this state
+            # (defensive); fall back to info.case_id.
+            case_id = (state or {}).get("case_id")
+            if not case_id:
+                case_id = ((state or {}).get("info") or {}).get("case_id", "")
+                if case_id and isinstance(state, dict):
+                    state["case_id"] = case_id
 
-            # Inject case_dir for the precompute-lookup tools
-            if state is not None and _precompute_root:
-                case_id = state.get("case_id")
-                if case_id:
-                    tool_args["case_dir"] = os.path.join(_precompute_root, case_id)
+            # Inject case_dir ONLY for precompute lookup tools. submit_to_ground
+            # / drop have no `case_dir` parameter and would TypeError on the
+            # injected kwarg.
+            if _precompute_root and case_id and tool_name in _PRECOMPUTE_TOOL_NAMES:
+                tool_args["case_dir"] = os.path.join(_precompute_root, case_id)
 
-            if state is not None:
-                # Best-effort tool-call ledger (separate from `tool_calls` in
-                # messages so we don't depend on verifiers' message shape).
+            if isinstance(state, dict):
                 log = state.setdefault("tool_call_log", [])
-                # Record a shallow copy minus the injected case_dir so the log
-                # reflects what the model actually emitted.
                 logged_args = {k: v for k, v in tool_args.items() if k != "case_dir"}
                 log.append({"name": tool_name, "args": logged_args})
-
-            if state is not None and tool_name in {"submit_to_ground", "drop"}:
-                state["terminal_called"] = True
-                state["terminal_action"] = tool_name
+                if tool_name in {"submit_to_ground", "drop"}:
+                    state["terminal_called"] = True
+                    state["terminal_action"] = tool_name
             return tool_args
 
         @vf.stop
@@ -307,34 +314,30 @@ def _maybe_dump_trace(rollout_result, call_args, call_kwargs) -> None:
     the rollout (case_id, terminal action, full message trace with images
     scrubbed, tool-call ledger). Best-effort; tolerant to verifiers shape
     changes.
+
+    `MultiTurnEnv.rollout()` returns a `State` (dict-like) directly. We pull
+    `state["completion"]` for the chat trace and read our setup_state-added
+    fields (case_id, tool_call_log, terminal_*) from it.
     """
     import os, json, time, threading
     path = os.environ.get("SATELLITEAGENT_TRACE_PATH", "").strip()
     if not path:
         return
 
-    # verifiers' rollout typically returns (completion, state) but be liberal.
+    # MultiTurnEnv.rollout() returns the State (dict). Tuple/list returns are
+    # supported only as a safety net for non-MultiTurn envs.
     completion, state = None, None
-    if isinstance(rollout_result, tuple):
-        if len(rollout_result) >= 2:
-            completion, state = rollout_result[0], rollout_result[1]
-        elif rollout_result:
-            completion = rollout_result[0]
-    elif isinstance(rollout_result, dict):
-        completion = rollout_result.get("completion") or rollout_result.get("messages")
-        state = rollout_result.get("state")
-    else:
+    if isinstance(rollout_result, dict):
+        state = rollout_result
+        completion = state.get("completion") or state.get("messages")
+    elif isinstance(rollout_result, tuple) and len(rollout_result) >= 2:
+        completion, state = rollout_result[0], rollout_result[1]
+    elif isinstance(rollout_result, list):
         completion = rollout_result
 
-    # Fallback: dig state out of call_kwargs/args.
-    if state is None:
-        state = call_kwargs.get("state")
-        if state is None:
-            for a in call_args:
-                if isinstance(a, dict) and ("case_id" in a or "expected_action" in a or "expected" in a or "info" in a):
-                    state = a; break
-    state = state or {}
+    state = state if isinstance(state, dict) else {}
 
+    case_id = state.get("case_id") or (state.get("info") or {}).get("case_id")
     expected = state.get("expected_action")
     if not expected:
         exp = (state.get("info") or {}).get("expected") or {}
@@ -351,7 +354,7 @@ def _maybe_dump_trace(rollout_result, call_args, call_kwargs) -> None:
     entry = {
         "ts": time.time(),
         "pid": os.getpid(),
-        "case_id": state.get("case_id"),
+        "case_id": case_id,
         "expected_action": expected,
         "terminal_called": bool(state.get("terminal_called")),
         "terminal_action": state.get("terminal_action"),
@@ -667,24 +670,30 @@ def load_environment(
             >=2 = lookup tools usable before final terminal action.
     """
     SatelliteToolEnv = _build_env_class(precompute_root)
-    tools: list[Callable] = [_expose_for_vf(submit_to_ground), _expose_for_vf(drop)]
-    if precompute_root:
-        tools = [_expose_for_vf(t) for t in _REAL_TOOLS] + tools
+    # Terminal tools always exposed. Precompute lookup tools are added via
+    # `add_tool(..., args_to_skip=["case_dir"])` so the model NEVER sees
+    # `case_dir` in the schema (env injects it from state.case_id at call
+    # time). Otherwise the model hallucinates `case_dir="case_dir"` literally.
+    base_tools: list[Callable] = [_expose_for_vf(submit_to_ground), _expose_for_vf(drop)]
 
     if toy:
-        return SatelliteToolEnv(
+        env = SatelliteToolEnv(
             dataset=_toy_dataset(),
-            tools=tools,
+            tools=base_tools,
             rubric=_toy_rubric(),
             max_turns=max_turns,
         )
+        if precompute_root:
+            for t in _REAL_TOOLS:
+                env.add_tool(t, args_to_skip=["case_dir"])
+        return env
 
     if not data_root:
         raise ValueError("load_environment(toy=False) requires data_root=<path>")
 
-    return SatelliteToolEnv(
+    env = SatelliteToolEnv(
         dataset=_real_dataset(data_root),
-        tools=tools,
+        tools=base_tools,
         rubric=_real_rubric(rubric_weights),
         # When precompute_root is set, lookup tools should be reachable
         # before the terminal action -> caller passes max_turns >= 2.
@@ -692,3 +701,7 @@ def load_environment(
         # (assistant emits one terminal tool_call, env stops via @vf.stop).
         max_turns=max_turns,
     )
+    if precompute_root:
+        for t in _REAL_TOOLS:
+            env.add_tool(t, args_to_skip=["case_dir"])
+    return env
