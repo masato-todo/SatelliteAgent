@@ -140,39 +140,48 @@ def _toy_rubric() -> "vf.Rubric":
     return vf.Rubric(funcs=[action_match], weights=[1.0])
 
 
-def _build_env_class():
+def _build_env_class(precompute_root: str | None = None):
     """Build the StatefulToolEnv subclass at call time so `verifiers` import
-    is deferred. Returns the class object."""
+    is deferred. Returns the class object.
+
+    Args:
+        precompute_root: when set, update_tool_args injects `case_dir =
+            precompute_root/<case_id>` into every tool call so the lookup
+            tools can read per-case PNG/YAML from disk.
+    """
     import verifiers as vf
+    import os
+    _precompute_root = precompute_root
 
     class _SatelliteToolEnv(vf.StatefulToolEnv):
         """Wraps SatelliteAgent tools so the deterministic per-rollout state
-        (cache lookups + downlink budget) is injected into each tool call.
-
-        For the Phase 5 toy we do not need state injection -- submit_to_ground
-        and drop are pure functions of their declared args. Phase 2 real env
-        will set up case caches here.
+        (case_id, precompute case_dir, terminal flag) is injected into each
+        tool call.
         """
 
         async def setup_state(self, state):
             info = state.get("info") or {}
             state["scenario"] = info.get("scenario", "")
             state["expected_action"] = info.get("expected_action", "")
+            state["case_id"] = info.get("case_id", "")
             state["terminal_called"] = False
             return state
 
         def update_tool_args(self, tool_name: str, tool_args: dict, *args, **kwargs) -> dict:
             # verifiers' StatefulToolEnv calls this as
             # update_tool_args(tool_name, tool_args, messages, state, **kwargs).
-            # We accept *args/**kwargs to stay compatible across verifiers
-            # versions, but we still need to reach `state` so we can mark the
-            # rollout completed when a terminal tool fires.
             state = kwargs.get("state")
             if state is None:
-                # positional fallback: state is the dict-shaped arg after messages
                 for a in args:
-                    if isinstance(a, dict) and ("info" in a or "expected_action" in a or "scenario" in a):
+                    if isinstance(a, dict) and ("info" in a or "expected_action" in a or "scenario" in a or "case_id" in a):
                         state = a; break
+
+            # Inject case_dir for the precompute-lookup tools
+            if state is not None and _precompute_root:
+                case_id = state.get("case_id")
+                if case_id:
+                    tool_args["case_dir"] = os.path.join(_precompute_root, case_id)
+
             if state is not None and tool_name in {"submit_to_ground", "drop"}:
                 state["terminal_called"] = True
             return tool_args
@@ -182,12 +191,134 @@ def _build_env_class():
             """Stop the rollout as soon as `submit_to_ground` or `drop` is
             called. Without this, vLLM with `tool_choice=required` would force
             the model to keep emitting tool calls every turn until max_turns
-            is hit, which inflates token usage and creates degenerate
-            "drop drop drop" trajectories.
+            is hit.
             """
             return bool(state.get("terminal_called"))
 
     return _SatelliteToolEnv
+
+
+# --- Precompute lookup tools (Phase 5b real-tool path) -------------------
+
+def _read_yaml(path):
+    import yaml as _yaml
+    try:
+        with open(path) as f:
+            return _yaml.safe_load(f)
+    except Exception:
+        return None
+
+
+def compute_index(
+    index: str,
+    which: str = "after",
+    case_dir: str = "",
+):
+    """Compute a Sentinel-2 spectral index (NDVI/NDWI/MNDWI/NBR/NDBI/NDSI) and
+    return its pseudo-color heatmap PNG path plus statistics. Bound to the
+    current case automatically; `case_dir` is set by the env.
+    """
+    import os as _os
+    if not case_dir:
+        return {"error": "no case context (env did not inject case_dir)"}
+    stats_path = _os.path.join(case_dir, "compute_index", f"{index}__{which}.stats.yaml")
+    png_path   = _os.path.join(case_dir, "compute_index", f"{index}__{which}.png")
+    data = _read_yaml(stats_path)
+    if data is None:
+        return {"error": f"not cached: compute_index(index={index}, which={which})"}
+    out = dict(data.get("response") or {})
+    if _os.path.isfile(png_path):
+        out["png_path"] = png_path
+    return out
+
+
+def compute_index_delta(
+    index: str,
+    case_dir: str = "",
+):
+    """Compute Δ = After - Before for a spectral index. Returns a diverging
+    heatmap (red=decrease, blue=increase) PNG path plus delta stats. `case_dir`
+    is set by the env.
+    """
+    import os as _os
+    if not case_dir:
+        return {"error": "no case context (env did not inject case_dir)"}
+    stats_path = _os.path.join(case_dir, "compute_index_delta", f"{index}.stats.yaml")
+    png_path   = _os.path.join(case_dir, "compute_index_delta", f"{index}.png")
+    data = _read_yaml(stats_path)
+    if data is None:
+        return {"error": f"not cached: compute_index_delta(index={index})"}
+    out = dict(data.get("response") or {})
+    if _os.path.isfile(png_path):
+        out["png_path"] = png_path
+    return out
+
+
+def fetch_band(
+    band: str,
+    which: str = "after",
+    case_dir: str = "",
+):
+    """Fetch a single Sentinel-2 grayscale band as PNG plus min/max/mean
+    stats. `case_dir` is set by the env automatically.
+    """
+    import os as _os
+    if not case_dir:
+        return {"error": "no case context (env did not inject case_dir)"}
+    stats_path = _os.path.join(case_dir, "fetch_band", f"{band}__{which}.stats.yaml")
+    png_path   = _os.path.join(case_dir, "fetch_band", f"{band}__{which}.png")
+    data = _read_yaml(stats_path)
+    if data is None:
+        return {"error": f"not cached: fetch_band(band={band}, which={which})"}
+    out = dict(data.get("response") or {})
+    if _os.path.isfile(png_path):
+        out["png_path"] = png_path
+    return out
+
+
+def false_color(
+    bands: list[str],
+    which: str = "after",
+    case_dir: str = "",
+):
+    """Build an RGB false-color composite from 3 Sentinel-2 bands.
+    Available combos in the precompute cache:
+    nir-red-green / swir22-nir-red / swir16-nir-blue / nir-swir16-red /
+    red-green-blue. `case_dir` is set by the env.
+    """
+    import os as _os
+    if not case_dir:
+        return {"error": "no case context (env did not inject case_dir)"}
+    if not isinstance(bands, list) or len(bands) != 3:
+        return {"error": "`bands` must be a list of exactly 3 band names"}
+    combo = "-".join(bands)
+    png_path = _os.path.join(case_dir, "false_color", f"{combo}__{which}.png")
+    if not _os.path.isfile(png_path):
+        return {"error": f"not cached: false_color(bands={bands}, which={which})"}
+    return {"png_path": png_path, "bands": bands, "which": which}
+
+
+def classify_change(
+    image_before: str = "before",
+    image_after: str = "after",
+    case_dir: str = "",
+):
+    """Run the offline change classifier (precomputed Gemini result) on the
+    case's before/after pair. Returns candidate classes with confidences.
+    `case_dir` is set by the env automatically; the image_* args are kept
+    only to mirror the production schema.
+    """
+    import os as _os
+    if not case_dir:
+        return {"error": "no case context (env did not inject case_dir)"}
+    path = _os.path.join(case_dir, "classify_change.yaml")
+    data = _read_yaml(path)
+    if data is None:
+        return {"error": "not cached: classify_change"}
+    return data.get("response") or {}
+
+
+_REAL_TOOLS = [compute_index, compute_index_delta, fetch_band, false_color, classify_change]
 
 
 # --- Real dataset (Phase 5b: read raw canonical_dataset.yaml directly) ----
@@ -339,7 +470,9 @@ def _real_rubric(weights: dict | None = None) -> "vf.Rubric":
 def load_environment(
     toy: bool = True,
     data_root: str | None = None,
+    precompute_root: str | None = None,
     rubric_weights: dict | None = None,
+    max_turns: int = 1,
     **kwargs: Any,
 ) -> "vf.Environment":
     """Entry point invoked by `verifiers.load_environment("satelliteagent_env")`.
@@ -347,24 +480,31 @@ def load_environment(
     Args:
         toy: when True use the hand-crafted submit-or-drop toy dataset.
             When False, read `canonical_dataset.yaml` from `data_root` and
-            build the real Phase 5b dataset (Phase 2 still needs to grow
-            negative coverage and add precompute_tool_responses, but the
-            shape is right for an end-to-end smoke).
+            build the real dataset.
         data_root: required when toy=False. Path to the directory containing
-            `canonical_dataset.yaml` and `curated_pairs/<case_id>/...`.
-            On Kaggle this is `/kaggle/input/satelliteagent-raw-v1`.
-        rubric_weights: optional dict overriding default per-validator weights
-            (keys: "action", "attach", "urgency", "change_type").
+            `canonical_dataset.yaml` and `curated_pairs/<case_id>/...`
+            (`<KAGGLE_USER>/satelliteagent-raw-v1`).
+        precompute_root: optional. Path to the precompute cache
+            (`<KAGGLE_USER>/satelliteagent-precompute-v1`). When set, the env
+            exposes `compute_index` / `compute_index_delta` / `fetch_band` /
+            `false_color` / `classify_change` as offline lookup tools that
+            read PNG/YAML from `<precompute_root>/<case_id>/...`. When
+            unset, only `submit_to_ground` and `drop` are exposed.
+        rubric_weights: optional dict overriding default per-validator weights.
+        max_turns: orchestrator multi-turn cap. 1 = single tool_call (smoke),
+            >=2 = lookup tools usable before final terminal action.
     """
-    SatelliteToolEnv = _build_env_class()
+    SatelliteToolEnv = _build_env_class(precompute_root)
     tools: list[Callable] = [_expose_for_vf(submit_to_ground), _expose_for_vf(drop)]
+    if precompute_root:
+        tools = [_expose_for_vf(t) for t in _REAL_TOOLS] + tools
 
     if toy:
         return SatelliteToolEnv(
             dataset=_toy_dataset(),
             tools=tools,
             rubric=_toy_rubric(),
-            max_turns=3,
+            max_turns=max_turns,
         )
 
     if not data_root:
@@ -374,11 +514,9 @@ def load_environment(
         dataset=_real_dataset(data_root),
         tools=tools,
         rubric=_real_rubric(rubric_weights),
-        # Terminal tools (submit_to_ground / drop) finish the case; the
-        # @vf.stop hook in _SatelliteToolEnv flips state["terminal_called"]
-        # but because update_tool_args fires inside the next iteration's
-        # env_response, the rollout still pays one extra turn before
-        # is_completed catches it. Capping max_turns at 1 forces a clean
-        # 1-turn rollout: assistant emits one terminal tool_call, env stops.
-        max_turns=1,
+        # When precompute_root is set, lookup tools should be reachable
+        # before the terminal action -> caller passes max_turns >= 2.
+        # Without precompute_root, max_turns=1 forces a clean 1-turn rollout
+        # (assistant emits one terminal tool_call, env stops via @vf.stop).
+        max_turns=max_turns,
     )
