@@ -1,5 +1,5 @@
 {
-  "id": "titanic12/prime-rl-s5-satelliteagent-rl",
+  "id": "<KAGGLE_USER>/prime-rl-s5-satelliteagent-rl",
   "title": "prime-rl-s5-satelliteagent-rl",
   "code_file": "prime-rl-s5-satelliteagent-rl.ipynb",
   "language": "python",
@@ -12,8 +12,8 @@
   "keywords": [],
   "dataset_sources": [],
   "kernel_sources": [
-    "titanic12/prime-rl-offline-prep",
-    "titanic12/satelliteagent-env-prep"
+    "<KAGGLE_USER>/prime-rl-offline-prep",
+    "<KAGGLE_USER>/satelliteagent-env-prep"
   ],
   "competition_sources": [
     "nvidia-nemotron-model-reasoning-challenge"

@@ -1,5 +1,5 @@
 {
-  "id": "titanic12/prime-rl-s9-lfm2vl-grpo-real",
+  "id": "<KAGGLE_USER>/prime-rl-s9-lfm2vl-grpo-real",
   "title": "prime-rl-s9-lfm2vl-grpo-real",
   "code_file": "prime-rl-s9-lfm2vl-grpo-real.ipynb",
   "language": "python",
@@ -11,11 +11,11 @@
   "enable_internet": false,
   "keywords": [],
   "dataset_sources": [
-    "titanic12/satelliteagent-raw-v1"
+    "<KAGGLE_USER>/satelliteagent-raw-v1"
   ],
   "kernel_sources": [
-    "titanic12/prime-rl-offline-prep",
-    "titanic12/satelliteagent-env-prep"
+    "<KAGGLE_USER>/prime-rl-offline-prep",
+    "<KAGGLE_USER>/satelliteagent-env-prep"
   ],
   "competition_sources": [
     "nvidia-nemotron-model-reasoning-challenge"

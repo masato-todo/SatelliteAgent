@@ -39,7 +39,7 @@ Validators は Python コード ([eval/validators/common.py](../eval/validators/
 
 ## 2. Kaggle Dataset 構造
 
-**1 個の Kaggle Dataset** (`titanic12/satelliteagent-data` など) に全部まとめる。S6/S7/S8 で確立した notebook の `dataset_sources` で参照する。
+**1 個の Kaggle Dataset** (`<KAGGLE_USER>/satelliteagent-data` など) に全部まとめる。S6/S7/S8 で確立した notebook の `dataset_sources` で参照する。
 
 ```
 satelliteagent-data/
@@ -75,10 +75,10 @@ prime-rl notebook 側からは `/kaggle/input/satelliteagent-data/` にマウン
 
 ```json
 {
-  "dataset_sources": ["titanic12/satelliteagent-data"],
+  "dataset_sources": ["<KAGGLE_USER>/satelliteagent-data"],
   "kernel_sources": [
-    "titanic12/prime-rl-offline-prep",
-    "titanic12/satelliteagent-env-prep"
+    "<KAGGLE_USER>/prime-rl-offline-prep",
+    "<KAGGLE_USER>/satelliteagent-env-prep"
   ]
 }
 ```
@@ -282,7 +282,7 @@ train で SFT/GRPO、val で best-of-N 評価、test で最終リーダーボー
 # 上記ディレクトリ構成で dataset/ を準備
 cd dataset
 kaggle datasets init -p .
-# dataset-metadata.json を編集 (id: titanic12/satelliteagent-data)
+# dataset-metadata.json を編集 (id: <KAGGLE_USER>/satelliteagent-data)
 kaggle datasets create -p .
 
 # 以後の更新
@@ -293,7 +293,7 @@ kaggle datasets version -p . -m "v0.1.0 — initial 100 cases"
 
 [s8 notebook](notebooks/s8_lfm2vl_rl_satellite/) の clone を流用、変更は 4 点だけ:
 
-1. `kernel-metadata.json` の `dataset_sources` に `titanic12/satelliteagent-data` を追加
+1. `kernel-metadata.json` の `dataset_sources` に `<KAGGLE_USER>/satelliteagent-data` を追加
 2. orch.toml に `data_root` を渡し、toy フラグを外す:
    ```toml
    [[train.env]]

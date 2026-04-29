@@ -1,5 +1,5 @@
 {
-  "id": "titanic12/prime-rl-s12-lfm2vl-grpo-terminal-stop",
+  "id": "<KAGGLE_USER>/prime-rl-s12-lfm2vl-grpo-terminal-stop",
   "title": "prime-rl-s12-lfm2vl-grpo-terminal-stop",
   "code_file": "prime-rl-s12-lfm2vl-grpo-terminal-stop.ipynb",
   "language": "python",
@@ -11,11 +11,11 @@
   "enable_internet": false,
   "keywords": [],
   "dataset_sources": [
-    "titanic12/satelliteagent-raw-v1"
+    "<KAGGLE_USER>/satelliteagent-raw-v1"
   ],
   "kernel_sources": [
-    "titanic12/prime-rl-offline-prep",
-    "titanic12/satelliteagent-env-prep"
+    "<KAGGLE_USER>/prime-rl-offline-prep",
+    "<KAGGLE_USER>/satelliteagent-env-prep"
   ],
   "competition_sources": [
     "nvidia-nemotron-model-reasoning-challenge"

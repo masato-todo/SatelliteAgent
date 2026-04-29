@@ -32,7 +32,7 @@
 - Python 3.12 と uv は Kaggle 環境に既設なので `python-build-standalone` 同梱不要
 - flash-attn は Stage 1-3 不要なので除外
 
-**実際に動いた構成** ([notebooks/s0_prep/](notebooks/s0_prep/), Kaggle: `titanic12/prime-rl-offline-prep`):
+**実際に動いた構成** ([notebooks/s0_prep/](notebooks/s0_prep/), Kaggle: `<KAGGLE_USER>/prime-rl-offline-prep`):
 
 1. CPU notebook (Internet ON) で `python3.12 -m pip download` 実行
 2. `uv export --no-hashes --no-emit-project` で git+/URL 含む reqs.txt 生成 (uvはこの目的だけに使用)
@@ -59,9 +59,9 @@
 
 ### Stage 1: import 通過 ✅ PASS
 
-**実際に動いた install 手順** ([notebooks/s1_import_test/](notebooks/s1_import_test/), Kaggle: `titanic12/prime-rl-s1-import-test`):
+**実際に動いた install 手順** ([notebooks/s1_import_test/](notebooks/s1_import_test/), Kaggle: `<KAGGLE_USER>/prime-rl-s1-import-test`):
 
-1. `kernel_sources: ["titanic12/prime-rl-offline-prep"]` で prep の output を `/kaggle/input/notebooks/titanic12/prime-rl-offline-prep/output/` にマウント
+1. `kernel_sources: ["<KAGGLE_USER>/prime-rl-offline-prep"]` で prep の output を `/kaggle/input/notebooks/<KAGGLE_USER>/prime-rl-offline-prep/output/` にマウント
 2. **wheel フィルタリングが必須**:
    - `torch-` / `torchvision-` / `torchaudio-` / `nvidia_*` で始まる wheel は **install しない** (Kaggle既設のtorch+NCCLとABI衝突する)
    - 重複バージョン (例: torch-2.10+cu128 と torch-2.11+cu128 が両方DLされた) は最高版のみ採用
@@ -166,9 +166,9 @@ SatelliteAgent/
 
 **Kaggle 構成 (2 prep + S5)**:
 
-- [notebooks/s0_prep/](notebooks/s0_prep/) `titanic12/prime-rl-offline-prep` — 重い prep (15-20min)
-- [notebooks/s0b_env_prep/](notebooks/s0b_env_prep/) `titanic12/satelliteagent-env-prep` — SatelliteAgent wheel build のみ (~2min、SatelliteAgent 更新時に再ビルド)
-- [notebooks/s5_satelliteagent_rl/](notebooks/s5_satelliteagent_rl/) `titanic12/prime-rl-s5-satelliteagent-rl` — 両 prep を `kernel_sources` で参照、`id = "satelliteagent_env"` で toy RL
+- [notebooks/s0_prep/](notebooks/s0_prep/) `<KAGGLE_USER>/prime-rl-offline-prep` — 重い prep (15-20min)
+- [notebooks/s0b_env_prep/](notebooks/s0b_env_prep/) `<KAGGLE_USER>/satelliteagent-env-prep` — SatelliteAgent wheel build のみ (~2min、SatelliteAgent 更新時に再ビルド)
+- [notebooks/s5_satelliteagent_rl/](notebooks/s5_satelliteagent_rl/) `<KAGGLE_USER>/prime-rl-s5-satelliteagent-rl` — 両 prep を `kernel_sources` で参照、`id = "satelliteagent_env"` で toy RL
 
 **確認できたこと**:
 1. SatelliteAgent wheel build (`pip wheel . --no-deps`) 成功、`satelliteagent_env` が verifiers から resolve される
@@ -193,7 +193,7 @@ SatelliteAgent/
 
 **目的**: prime-rl の SFT trainer / vLLM inference が **本番モデル LFM2.5-VL** を扱えるかの最小検証。S2 (Qwen3-0.6B) で動いただけでは LFM2.5-VL での動作保証にならない。
 
-**実装** ([notebooks/s6_lfm2vl_pipeline/](notebooks/s6_lfm2vl_pipeline/), Kaggle: `titanic12/prime-rl-s6-lfm2vl-pipeline`):
+**実装** ([notebooks/s6_lfm2vl_pipeline/](notebooks/s6_lfm2vl_pipeline/), Kaggle: `<KAGGLE_USER>/prime-rl-s6-lfm2vl-pipeline`):
 
 合成 VLM データ (4色 RGB 画像 + "What color?" → 色名 の 4 サンプル) を parquet 形式 (`<dir>/parquet/train/data.parquet`) で書き出し、SFT 2 steps を回す。
 
@@ -221,7 +221,7 @@ SatelliteAgent/
 
 **目的**: 「LFM2.5-VL で **RL pipeline 自体が回るか**」を tool/env の複雑性無しで切り分ける。reverse-text は text-only env なので tool 配線とは独立に検証できる。
 
-**実装** ([notebooks/s7_lfm2vl_rl_revtext/](notebooks/s7_lfm2vl_rl_revtext/), Kaggle: `titanic12/prime-rl-s7-lfm2vl-rl-revtext`):
+**実装** ([notebooks/s7_lfm2vl_rl_revtext/](notebooks/s7_lfm2vl_rl_revtext/), Kaggle: `<KAGGLE_USER>/prime-rl-s7-lfm2vl-rl-revtext`):
 
 S3 (Qwen3-0.6B reverse-text RL) の 3-process 構造をベースに、モデルだけ LFM2.5-VL に差し替え + S6 で見つけた 2 patch + `[model.vlm]` + bf16 + sdpa を入れた trainer.toml。
 
@@ -243,7 +243,7 @@ reverse-text の reward は base モデルが解けず低いままだが、**pip
 
 **目的**: S7 の VLM RL pipeline + S5 の tool-calling env を結合し、ハッカソン本番設計 (LFM2.5-VL × ツール呼び出し × GRPO) の最小スタックが回ることを確認。
 
-**実装** ([notebooks/s8_lfm2vl_rl_satellite/](notebooks/s8_lfm2vl_rl_satellite/), Kaggle: `titanic12/prime-rl-s8-lfm2vl-rl-satellite`):
+**実装** ([notebooks/s8_lfm2vl_rl_satellite/](notebooks/s8_lfm2vl_rl_satellite/), Kaggle: `<KAGGLE_USER>/prime-rl-s8-lfm2vl-rl-satellite`):
 
 S5 の構造 (satelliteagent_env toy + 2-prep notebook) + S7 の VLM patch (PATCH 1, PATCH 2) + bf16/sdpa + `tool_call_parser = "hermes"` + `tool_choice = "required"` (smoke 検証用、base モデルが自発的に tool 呼ばないので強制)。
 

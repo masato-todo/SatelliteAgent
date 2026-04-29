@@ -1,5 +1,5 @@
 {
-  "id": "titanic12/prime-rl-s2-sft-smoke",
+  "id": "<KAGGLE_USER>/prime-rl-s2-sft-smoke",
   "title": "prime-rl-s2-sft-smoke",
   "code_file": "prime-rl-s2-sft-smoke.ipynb",
   "language": "python",
@@ -12,7 +12,7 @@
   "keywords": [],
   "dataset_sources": [],
   "kernel_sources": [
-    "titanic12/prime-rl-offline-prep"
+    "<KAGGLE_USER>/prime-rl-offline-prep"
   ],
   "competition_sources": [
     "nvidia-nemotron-model-reasoning-challenge"

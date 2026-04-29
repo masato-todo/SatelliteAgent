@@ -1,5 +1,5 @@
 {
-  "id": "titanic12/prime-rl-s7-lfm2vl-rl-revtext",
+  "id": "<KAGGLE_USER>/prime-rl-s7-lfm2vl-rl-revtext",
   "title": "prime-rl-s7-lfm2vl-rl-revtext",
   "code_file": "prime-rl-s7-lfm2vl-rl-revtext.ipynb",
   "language": "python",
@@ -12,7 +12,7 @@
   "keywords": [],
   "dataset_sources": [],
   "kernel_sources": [
-    "titanic12/prime-rl-offline-prep"
+    "<KAGGLE_USER>/prime-rl-offline-prep"
   ],
   "competition_sources": [
     "nvidia-nemotron-model-reasoning-challenge"

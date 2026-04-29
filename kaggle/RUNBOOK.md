@@ -1,5 +1,15 @@
 # Kaggle ノートブックの投げ方 (チートシート)
 
+> **`<KAGGLE_USER>` プレースホルダについて**: 本リポジトリ配下の `kaggle/` 内のすべての
+> .md / .json / .ipynb / .sh では、Kaggle ユーザー名を `<KAGGLE_USER>` で表記する
+> (公開リポジトリで個人 ID を晒さないため)。実際に kaggle CLI を実行する直前に、
+> 自分のユーザー名で全置換するか、ローカル運用ブランチで sed 置換した状態を保つ:
+>
+> ```bash
+> # 一括置換 (work tree のみ、commit せずに使う)
+> grep -rl '<KAGGLE_USER>' kaggle/ | xargs sed -i "s|<KAGGLE_USER>|your_kaggle_username|g"
+> ```
+
 ## 1. 一度だけセットアップ
 
 ```bash
@@ -29,14 +39,14 @@ kaggle kernels push --accelerator NvidiaRtxPro6000
 ## 3. 状況確認
 
 ```bash
-kaggle kernels status titanic12/prime-rl-s12-lfm2vl-grpo-terminal-stop
+kaggle kernels status <KAGGLE_USER>/prime-rl-s12-lfm2vl-grpo-terminal-stop
 # QUEUED → RUNNING → COMPLETE / ERROR / CANCEL_ACKNOWLEDGED
 ```
 
 ## 4. 結果取得
 
 ```bash
-kaggle kernels output titanic12/prime-rl-s12-lfm2vl-grpo-terminal-stop -p ./out
+kaggle kernels output <KAGGLE_USER>/prime-rl-s12-lfm2vl-grpo-terminal-stop -p ./out
 # /kaggle/working/ に書かれたファイルが ./out に落ちてくる
 # eval_results.json / proc_logs/*.log / manifest.txt あたりを見る
 ```
@@ -60,7 +70,7 @@ env コード (`satelliteagent_env/`, `eval/`) を直したら:
 ```bash
 cp -r SatelliteAgent/kaggle/notebooks/s12_lfm2vl_grpo_terminal_stop \
       SatelliteAgent/kaggle/notebooks/sNN_my_experiment
-# kernel-metadata.json の "id" を "titanic12/prime-rl-sNN-my-experiment" 等に変更
+# kernel-metadata.json の "id" を "<KAGGLE_USER>/prime-rl-sNN-my-experiment" 等に変更
 # *.ipynb もリネーム + kernel-metadata.json の "code_file" を合わせる
 cd SatelliteAgent/kaggle/notebooks/sNN_my_experiment
 kaggle kernels push --accelerator NvidiaRtxPro6000

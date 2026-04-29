@@ -82,7 +82,7 @@ Kaggle offline で全ツールを動かすには、`eval/precompute_tool_respons
 - `compute_area`: 純粋数式 (size_km と画像解像度から計算)
 - `check_downlink_budget` / `estimate_size` / `compose_report` / `submit_to_ground` / `drop`: rollout state 操作のみ
 
-**規模感**: 約 4,000 ファイル / 500MB-1GB。precompute スクリプト (`eval/scripts/build_precompute.py` を新規作成) で online 環境で 1 回生成し、`titanic12/satelliteagent-precompute-v1` として Kaggle Dataset 化する。
+**規模感**: 約 4,000 ファイル / 500MB-1GB。precompute スクリプト (`eval/scripts/build_precompute.py` を新規作成) で online 環境で 1 回生成し、`<KAGGLE_USER>/satelliteagent-precompute-v1` として Kaggle Dataset 化する。
 
 ## 5. テスト
 
