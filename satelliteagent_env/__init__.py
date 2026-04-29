@@ -222,6 +222,25 @@ _PRECOMPUTE_TOOL_NAMES = {
 }
 
 
+def _debug_log(msg: str) -> None:
+    """Append a line to ``$SATELLITEAGENT_DEBUG_LOG`` when set.
+
+    Opt-in via env var so production runs don't pollute disk. Writes one line
+    per call, opens-and-closes per call so a process crash never loses buffered
+    output.
+    """
+    try:
+        import os as _os, time as _time
+        path = _os.environ.get("SATELLITEAGENT_DEBUG_LOG", "").strip()
+        if not path:
+            return
+        _os.makedirs(_os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"{_time.time():.3f} pid={_os.getpid()} {msg}\n")
+    except Exception:
+        pass
+
+
 def _build_env_class(precompute_root: str | None = None):
     """Build the StatefulToolEnv subclass at call time so `verifiers` import
     is deferred. Returns the class object.
@@ -243,13 +262,24 @@ def _build_env_class(precompute_root: str | None = None):
 
         async def setup_state(self, state):
             # MultiTurnEnv contract: mutate state in place; return value ignored.
-            info = state.get("info") or {}
-            state["scenario"] = info.get("scenario", "")
-            state["expected_action"] = info.get("expected_action", "")
-            state["case_id"] = info.get("case_id", "")
-            state["terminal_called"] = False
-            state["terminal_action"] = None
-            state["tool_call_log"] = []
+            try:
+                _debug_log(
+                    f"setup_state ENTER state_type={type(state).__name__} "
+                    f"state_keys={list(state.keys())[:20] if hasattr(state, 'keys') else 'NO_KEYS'} "
+                    f"info_type={type(state.get('info')).__name__ if hasattr(state, 'get') else 'NO_GET'}"
+                )
+                info = state.get("info") or {}
+                state["scenario"] = info.get("scenario", "")
+                state["expected_action"] = info.get("expected_action", "")
+                state["case_id"] = info.get("case_id", "")
+                state["terminal_called"] = False
+                state["terminal_action"] = None
+                state["tool_call_log"] = []
+                _debug_log(f"setup_state OK case_id={state.get('case_id')!r}")
+            except Exception as _e:
+                import traceback as _tb
+                _debug_log(f"setup_state RAISED {_e!r}\n{_tb.format_exc()}")
+                raise
 
         def update_tool_args(
             self,
@@ -259,28 +289,40 @@ def _build_env_class(precompute_root: str | None = None):
             state,
             **kwargs,
         ) -> dict:
-            # case_id may be missing if setup_state hasn't run for this state
-            # (defensive); fall back to info.case_id.
-            case_id = (state or {}).get("case_id")
-            if not case_id:
-                case_id = ((state or {}).get("info") or {}).get("case_id", "")
-                if case_id and isinstance(state, dict):
-                    state["case_id"] = case_id
+            try:
+                _debug_log(
+                    f"update_tool_args ENTER name={tool_name} "
+                    f"args_keys={list(tool_args.keys()) if isinstance(tool_args, dict) else type(tool_args).__name__} "
+                    f"state_type={type(state).__name__} "
+                    f"state_has_get={hasattr(state, 'get')}"
+                )
+                # case_id may be missing if setup_state hasn't run for this state
+                # (defensive); fall back to info.case_id.
+                case_id = (state or {}).get("case_id")
+                if not case_id:
+                    case_id = ((state or {}).get("info") or {}).get("case_id", "")
+                    if case_id and isinstance(state, dict):
+                        state["case_id"] = case_id
 
-            # Inject case_dir ONLY for precompute lookup tools. submit_to_ground
-            # / drop have no `case_dir` parameter and would TypeError on the
-            # injected kwarg.
-            if _precompute_root and case_id and tool_name in _PRECOMPUTE_TOOL_NAMES:
-                tool_args["case_dir"] = os.path.join(_precompute_root, case_id)
+                # Inject case_dir ONLY for precompute lookup tools. submit_to_ground
+                # / drop have no `case_dir` parameter and would TypeError on the
+                # injected kwarg.
+                if _precompute_root and case_id and tool_name in _PRECOMPUTE_TOOL_NAMES:
+                    tool_args["case_dir"] = os.path.join(_precompute_root, case_id)
 
-            if isinstance(state, dict):
-                log = state.setdefault("tool_call_log", [])
-                logged_args = {k: v for k, v in tool_args.items() if k != "case_dir"}
-                log.append({"name": tool_name, "args": logged_args})
-                if tool_name in {"submit_to_ground", "drop"}:
-                    state["terminal_called"] = True
-                    state["terminal_action"] = tool_name
-            return tool_args
+                if isinstance(state, dict):
+                    log = state.setdefault("tool_call_log", [])
+                    logged_args = {k: v for k, v in tool_args.items() if k != "case_dir"}
+                    log.append({"name": tool_name, "args": logged_args})
+                    if tool_name in {"submit_to_ground", "drop"}:
+                        state["terminal_called"] = True
+                        state["terminal_action"] = tool_name
+                _debug_log(f"update_tool_args OK name={tool_name} case_id={case_id!r}")
+                return tool_args
+            except Exception as _e:
+                import traceback as _tb
+                _debug_log(f"update_tool_args RAISED name={tool_name} {_e!r}\n{_tb.format_exc()}")
+                raise
 
         @vf.stop
         async def terminal_tool_called(self, state, **kwargs):
@@ -289,14 +331,35 @@ def _build_env_class(precompute_root: str | None = None):
             the model to keep emitting tool calls every turn until max_turns
             is hit.
             """
-            return bool(state.get("terminal_called"))
+            try:
+                if state is None:
+                    _debug_log("terminal_tool_called STATE_IS_NONE")
+                    return False
+                return bool(state.get("terminal_called"))
+            except Exception as _e:
+                import traceback as _tb
+                _debug_log(f"terminal_tool_called RAISED {_e!r}\n{_tb.format_exc()}")
+                raise
 
         async def rollout(self, *args, **kwargs):
             """Wrap parent rollout to dump a JSONL trace per rollout when
             ``SATELLITEAGENT_TRACE_PATH`` is set. Failures are swallowed so a
             broken tracer never breaks training.
             """
-            result = await super().rollout(*args, **kwargs)
+            try:
+                _debug_log(
+                    f"rollout ENTER nargs={len(args)} kwargs_keys={list(kwargs.keys())}"
+                )
+                result = await super().rollout(*args, **kwargs)
+                _debug_log(
+                    f"rollout RETURNED type={type(result).__name__} "
+                    f"keys={list(result.keys())[:25] if hasattr(result, 'keys') else 'NO_KEYS'}"
+                )
+            except Exception as _e:
+                import traceback as _tb
+                _debug_log(f"rollout RAISED {_e!r}\n{_tb.format_exc()}")
+                raise
+
             try:
                 _maybe_dump_trace(result, args, kwargs)
             except Exception as _e:
@@ -304,6 +367,7 @@ def _build_env_class(precompute_root: str | None = None):
                 # raise into the orchestrator's gather.
                 import sys as _sys
                 print(f"[satelliteagent_env] trace dump failed: {_e!r}", file=_sys.stderr)
+                _debug_log(f"_maybe_dump_trace RAISED {_e!r}")
             return result
 
     return _SatelliteToolEnv
