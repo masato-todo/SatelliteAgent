@@ -483,25 +483,37 @@ def compute_index(
 ):
     """Compute a single-timepoint Sentinel-2 spectral index over the scene.
 
-    Args:
-        index: which spectral index to compute. Each index measures a
-            different surface property:
-            - "NBR"  : Normalized Burn Ratio (B8, B12). Sensitive to burn
-                       scars and dry/charred surfaces.
-            - "NDVI" : Vegetation index (B8, B4). High on green vegetation.
-            - "NDWI" : Water index (B3, B8). High on open water.
-            - "MNDWI": Modified water index (B3, B11). More robust to
-                       built-up areas than NDWI.
-            - "NDBI" : Built-up index (B11, B8). High on urban surfaces.
-            - "NDSI" : Snow/ice index (B3, B11). High on snow.
-        which: snapshot to evaluate. One of "before" (previous satellite
-            pass) or "after" (current pass). To compare snapshots, use
-            `compute_index_delta` instead.
+    The two arguments answer two different questions:
+      `index` = WHICH SURFACE PROPERTY to measure (a spectral-index name).
+      `which` = WHICH SNAPSHOT to measure it on (a timepoint selector).
+    They are NOT interchangeable — values like "after" / "before" belong
+    only in `which`, never in `index`.
 
-    Returns: dict with stats {min, max, mean, median, frac_decrease_strong,
-    frac_increase_strong} plus a `png_path` to the pseudo-color heatmap.
-    Note: a single-timepoint index tells you what's there NOW; to detect
-    CHANGE between the passes you need `compute_index_delta`.
+    Args:
+        index (string): name of the spectral index. The defined indices
+            are:
+              - "NBR"   — Normalized Burn Ratio (B8, B12). Burn scars /
+                          charred surfaces stand out.
+              - "NDVI"  — Vegetation index (B8, B4). High on green plants.
+              - "NDWI"  — Water index (B3, B8). High on open water.
+              - "MNDWI" — Modified water index (B3, B11). More robust to
+                          built-up areas than NDWI.
+              - "NDBI"  — Built-up index (B11, B8). High on urban surface.
+              - "NDSI"  — Snow/ice index (B3, B11). High on snow.
+        which (string): snapshot selector. Exactly one of:
+              - "before" — the previous satellite pass.
+              - "after"  — the current pass.
+
+    Returns:
+        dict with stats {min, max, mean, median, frac_decrease_strong,
+        frac_increase_strong} plus `png_path` to the pseudo-color heatmap.
+
+    Example:
+        compute_index(index="NBR", which="after")
+        → returns the NBR map over the after-pass scene.
+
+    A single-timepoint index tells you what is there NOW. To detect a
+    CHANGE between the two passes, use `compute_index_delta` instead.
     """
     import os as _os
     if not case_dir:
@@ -525,25 +537,35 @@ def compute_index_delta(
     this whenever the question is about CHANGE between the two passes
     (vegetation loss, burn, water cover change, urbanization, snow melt).
 
-    Args:
-        index: which spectral index to delta. Same set as `compute_index`.
-            Pick the index that matches the surface property whose change
-            you want to measure:
-            - "NBR"  : Δ drops (becomes negative) when surfaces transition
-                       to burned/charred state.
-            - "NDVI" : Δ drops on vegetation loss (deforestation, burn
-                       scar, drought, harvest).
-            - "NDWI" / "MNDWI": Δ rises on flooding, drops on drying.
-            - "NDBI" : Δ rises on new built-up surfaces.
-            - "NDSI" : Δ tracks snow gain/loss.
+    There is no `which` argument — both snapshots are loaded automatically
+    and the difference is taken. `index` selects WHICH SURFACE PROPERTY
+    to delta; values like "after" / "before" do not belong here.
 
-    Returns: dict with delta stats. Key fields:
-        - mean: Δ averaged over the scene (sign + magnitude indicate the
-          direction and intensity of change).
-        - frac_decrease_strong: fraction of pixels where Δ is strongly
-          negative (large local drops).
-        - frac_increase_strong: fraction with strong positive Δ.
-        - png_path: diverging heatmap (red = decrease, blue = increase).
+    Args:
+        index (string): name of the spectral index. Same set as
+            `compute_index`. Pick the index that matches the surface
+            property whose change you want to measure:
+              - "NBR"   — Δ drops (becomes negative) when surfaces turn
+                          into burned / charred state.
+              - "NDVI"  — Δ drops on vegetation loss (deforestation, burn
+                          scar, drought, harvest).
+              - "NDWI"  — Δ rises on flooding, drops on drying.
+              - "MNDWI" — Same as NDWI but more robust to built-up land.
+              - "NDBI"  — Δ rises on new built-up surfaces.
+              - "NDSI"  — Δ tracks snow gain / loss.
+
+    Returns:
+        dict with delta stats. Key fields:
+          - mean — Δ averaged over the scene (sign + magnitude indicate
+            the direction and intensity of change).
+          - frac_decrease_strong — fraction of pixels where Δ is strongly
+            negative (large local drops).
+          - frac_increase_strong — fraction of pixels with strong positive Δ.
+          - png_path — diverging heatmap (red = decrease, blue = increase).
+
+    Example:
+        compute_index_delta(index="NBR")
+        → returns Δ NBR (after − before) over the scene.
     """
     import os as _os
     if not case_dir:
@@ -568,21 +590,32 @@ def fetch_band(
     PNG plus stats. Lower-level than `compute_index`; only use this when
     you need to see a raw band in isolation.
 
-    Args:
-        band: which Sentinel-2 band:
-            - "B2"  : Blue (~490 nm)
-            - "B3"  : Green (~560 nm)
-            - "B4"  : Red (~665 nm)
-            - "B8"  : Near-infrared / NIR (~842 nm). Vegetation reflects
-                      strongly; water and burn scars are dark.
-            - "B11" : Shortwave infrared SWIR1 (~1610 nm). Burned and
-                      water-stressed surfaces stand out.
-            - "B12" : Shortwave infrared SWIR2 (~2200 nm). Strongest
-                      response to fire / burn scars.
-        which: "before" or "after".
+    `band` here is exactly one Sentinel-2 band identifier (NOT a multi-
+    band combo name — those belong to `false_color`). `which` is the
+    timepoint selector and never mixes with `band`.
 
-    Returns: dict with stats {min, max, mean, std} and `png_path`.
-    Generally a spectral index is more discriminative than a single band;
+    Args:
+        band (string): exactly one of the Sentinel-2 band identifiers:
+              - "B2"  — Blue (~490 nm)
+              - "B3"  — Green (~560 nm)
+              - "B4"  — Red (~665 nm)
+              - "B8"  — Near-infrared / NIR (~842 nm). Vegetation reflects
+                        strongly; water and burn scars are dark.
+              - "B11" — SWIR1 (~1610 nm). Burned and water-stressed
+                        surfaces stand out.
+              - "B12" — SWIR2 (~2200 nm). Strongest response to fire /
+                        burn scars.
+        which (string): snapshot selector. Exactly one of "before" or
+            "after".
+
+    Returns:
+        dict with stats {min, max, mean, std} and `png_path`.
+
+    Example:
+        fetch_band(band="B12", which="after")
+        → returns the SWIR2 band of the after-pass scene.
+
+    A spectral index is usually more discriminative than a single band;
     prefer `compute_index` / `compute_index_delta` for most decisions.
     """
     import os as _os
@@ -606,20 +639,37 @@ def false_color(
 ):
     """Build an RGB false-color composite from 3 Sentinel-2 bands. Useful
     for visual confirmation when an index has flagged something — different
-    band combinations make different surface types visually salient.
+    band orderings make different surface types visually salient.
+
+    `bands` MUST be a list of exactly 3 individual band names (not one
+    combined string). The first item becomes the Red channel, the second
+    Green, the third Blue. Internally the env joins them with dashes and
+    looks up the cached PNG, so only the orderings precomputed in the
+    cache are valid.
 
     Args:
-        bands: a list of exactly 3 dash-joined band-combo names. Available
-            combos in the cache:
-            - ["nir-red-green"]    : standard "color-IR". Vegetation = red.
-            - ["swir22-nir-red"]   : burn-scar emphasis. Burned land = dark
-                                     red / brown; healthy veg = green.
-            - ["swir16-nir-blue"]  : agricultural / vegetation health.
-            - ["nir-swir16-red"]   : water + vegetation contrast.
-            - ["red-green-blue"]   : true color (same as the original RGB).
-        which: "before" or "after".
+        bands (list of 3 strings): cached orderings, in [R, G, B] order:
+              - ["nir", "red", "green"]      — standard color-IR.
+                                                Vegetation appears red.
+              - ["swir22", "nir", "red"]     — burn-scar emphasis. Burned
+                                                land = dark red / brown,
+                                                healthy veg = green.
+              - ["swir16", "nir", "blue"]    — agricultural / vegetation
+                                                health.
+              - ["nir", "swir16", "red"]     — water + vegetation contrast.
+              - ["red", "green", "blue"]     — true color (same as the
+                                                original RGB image).
+            (Pseudo-bands "nir", "swir16", "swir22" are aliases for B8 /
+            B11 / B12 in this tool only.)
+        which (string): snapshot selector. Exactly one of "before" or
+            "after".
 
-    Returns: dict with `png_path` to the composite image.
+    Returns:
+        dict with `png_path` to the composite image.
+
+    Example:
+        false_color(bands=["swir22", "nir", "red"], which="after")
+        → returns the SWIR2/NIR/Red composite of the after pass.
     """
     import os as _os
     if not case_dir:
