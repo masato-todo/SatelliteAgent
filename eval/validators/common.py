@@ -122,3 +122,83 @@ async def change_type_match(completion, info, **_kw) -> float:
         return 0.0
     got = args.get("change_type")
     return 1.0 if got == target else 0.0
+
+
+# === schema-shaping rewards ------------------------------------------------
+
+def _tool_messages(completion: list[Any]) -> list[Any]:
+    """Return the tool-role messages from a completion list."""
+    out = []
+    if not isinstance(completion, list):
+        return out
+    for msg in completion:
+        role = getattr(msg, "role", None)
+        if role is None and isinstance(msg, dict):
+            role = msg.get("role")
+        if role == "tool":
+            out.append(msg)
+    return out
+
+
+def _tool_msg_content_str(msg: Any) -> str:
+    """Extract a tool message's content as a string for substring checks."""
+    c = getattr(msg, "content", None)
+    if c is None and isinstance(msg, dict):
+        c = msg.get("content")
+    if c is None:
+        return ""
+    if isinstance(c, str):
+        return c
+    if isinstance(c, list):
+        # multimodal content parts
+        parts = []
+        for p in c:
+            if isinstance(p, dict):
+                parts.append(p.get("text") or "")
+            else:
+                parts.append(str(p))
+        return "".join(parts)
+    return str(c)
+
+
+async def valid_tool_args(completion, info, **_kw) -> float:
+    """Reward the fraction of lookup-tool calls whose args were actually
+    accepted by the env (i.e., the tool DID NOT return an error string).
+
+    Rationale: LFM2.5-VL-450M is small enough that it hallucinates
+    `compute_index(index='after', which='before')` etc. when only
+    `action_match` is rewarded. Giving partial credit when a lookup tool
+    actually finds its cached entry pushes the model toward the correct
+    schema (NBR/NDVI/... for `index`, B3/B4/... for `band`, etc.) WITHOUT
+    requiring the rollout to reach a terminal action — so the reward signal
+    survives even when max_turns is hit.
+
+    Returns 0.0 if no tool response is found at all (e.g., model never used
+    a tool). Returns 1.0 if every tool response is non-error.
+    """
+    msgs = _tool_messages(completion)
+    if not msgs:
+        return 0.0
+    n_total = len(msgs)
+    n_ok = 0
+    for m in msgs:
+        s = _tool_msg_content_str(m)
+        # Tool implementations in `satelliteagent_env` return
+        # `{'error': '...'}` on cache miss / bad args. After ToolEnv.call_tool
+        # str()s the dict, the substring `'error'` appears in the message.
+        # We treat any non-error response as "args were valid".
+        if "'error'" not in s and '"error"' not in s and not s.startswith("{'error"):
+            n_ok += 1
+    return n_ok / n_total
+
+
+async def terminal_reached(completion, info, **_kw) -> float:
+    """Reward 1.0 if the rollout reached ANY terminal action (submit/drop),
+    else 0.0. Independent of correctness — just rewards termination.
+
+    Helps when max_turns is the binding constraint and most rollouts get
+    cut off mid-loop with reward 0; this gives the model a small but
+    consistent signal to terminate at all.
+    """
+    name, _ = _terminal_call(completion)
+    return 1.0 if name in TERMINAL else 0.0
