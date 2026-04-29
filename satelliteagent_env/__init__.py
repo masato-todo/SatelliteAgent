@@ -481,9 +481,27 @@ def compute_index(
     which: str = "after",
     case_dir: str = "",
 ):
-    """Compute a Sentinel-2 spectral index (NDVI/NDWI/MNDWI/NBR/NDBI/NDSI) and
-    return its pseudo-color heatmap PNG path plus statistics. Bound to the
-    current case automatically; `case_dir` is set by the env.
+    """Compute a single-timepoint Sentinel-2 spectral index over the scene.
+
+    Args:
+        index: which spectral index to compute. Each index measures a
+            different surface property:
+            - "NBR"  : Normalized Burn Ratio (B8, B12). Sensitive to burn
+                       scars and dry/charred surfaces.
+            - "NDVI" : Vegetation index (B8, B4). High on green vegetation.
+            - "NDWI" : Water index (B3, B8). High on open water.
+            - "MNDWI": Modified water index (B3, B11). More robust to
+                       built-up areas than NDWI.
+            - "NDBI" : Built-up index (B11, B8). High on urban surfaces.
+            - "NDSI" : Snow/ice index (B3, B11). High on snow.
+        which: snapshot to evaluate. One of "before" (previous satellite
+            pass) or "after" (current pass). To compare snapshots, use
+            `compute_index_delta` instead.
+
+    Returns: dict with stats {min, max, mean, median, frac_decrease_strong,
+    frac_increase_strong} plus a `png_path` to the pseudo-color heatmap.
+    Note: a single-timepoint index tells you what's there NOW; to detect
+    CHANGE between the passes you need `compute_index_delta`.
     """
     import os as _os
     if not case_dir:
@@ -503,9 +521,29 @@ def compute_index_delta(
     index: str,
     case_dir: str = "",
 ):
-    """Compute Δ = After - Before for a spectral index. Returns a diverging
-    heatmap (red=decrease, blue=increase) PNG path plus delta stats. `case_dir`
-    is set by the env.
+    """Compute Δ = (After − Before) for a Sentinel-2 spectral index. Use
+    this whenever the question is about CHANGE between the two passes
+    (vegetation loss, burn, water cover change, urbanization, snow melt).
+
+    Args:
+        index: which spectral index to delta. Same set as `compute_index`.
+            Pick the index that matches the surface property whose change
+            you want to measure:
+            - "NBR"  : Δ drops (becomes negative) when surfaces transition
+                       to burned/charred state.
+            - "NDVI" : Δ drops on vegetation loss (deforestation, burn
+                       scar, drought, harvest).
+            - "NDWI" / "MNDWI": Δ rises on flooding, drops on drying.
+            - "NDBI" : Δ rises on new built-up surfaces.
+            - "NDSI" : Δ tracks snow gain/loss.
+
+    Returns: dict with delta stats. Key fields:
+        - mean: Δ averaged over the scene (sign + magnitude indicate the
+          direction and intensity of change).
+        - frac_decrease_strong: fraction of pixels where Δ is strongly
+          negative (large local drops).
+        - frac_increase_strong: fraction with strong positive Δ.
+        - png_path: diverging heatmap (red = decrease, blue = increase).
     """
     import os as _os
     if not case_dir:
@@ -526,8 +564,26 @@ def fetch_band(
     which: str = "after",
     case_dir: str = "",
 ):
-    """Fetch a single Sentinel-2 grayscale band as PNG plus min/max/mean
-    stats. `case_dir` is set by the env automatically.
+    """Fetch a single Sentinel-2 surface-reflectance band as a grayscale
+    PNG plus stats. Lower-level than `compute_index`; only use this when
+    you need to see a raw band in isolation.
+
+    Args:
+        band: which Sentinel-2 band:
+            - "B2"  : Blue (~490 nm)
+            - "B3"  : Green (~560 nm)
+            - "B4"  : Red (~665 nm)
+            - "B8"  : Near-infrared / NIR (~842 nm). Vegetation reflects
+                      strongly; water and burn scars are dark.
+            - "B11" : Shortwave infrared SWIR1 (~1610 nm). Burned and
+                      water-stressed surfaces stand out.
+            - "B12" : Shortwave infrared SWIR2 (~2200 nm). Strongest
+                      response to fire / burn scars.
+        which: "before" or "after".
+
+    Returns: dict with stats {min, max, mean, std} and `png_path`.
+    Generally a spectral index is more discriminative than a single band;
+    prefer `compute_index` / `compute_index_delta` for most decisions.
     """
     import os as _os
     if not case_dir:
@@ -548,10 +604,22 @@ def false_color(
     which: str = "after",
     case_dir: str = "",
 ):
-    """Build an RGB false-color composite from 3 Sentinel-2 bands.
-    Available combos in the precompute cache:
-    nir-red-green / swir22-nir-red / swir16-nir-blue / nir-swir16-red /
-    red-green-blue. `case_dir` is set by the env.
+    """Build an RGB false-color composite from 3 Sentinel-2 bands. Useful
+    for visual confirmation when an index has flagged something — different
+    band combinations make different surface types visually salient.
+
+    Args:
+        bands: a list of exactly 3 dash-joined band-combo names. Available
+            combos in the cache:
+            - ["nir-red-green"]    : standard "color-IR". Vegetation = red.
+            - ["swir22-nir-red"]   : burn-scar emphasis. Burned land = dark
+                                     red / brown; healthy veg = green.
+            - ["swir16-nir-blue"]  : agricultural / vegetation health.
+            - ["nir-swir16-red"]   : water + vegetation contrast.
+            - ["red-green-blue"]   : true color (same as the original RGB).
+        which: "before" or "after".
+
+    Returns: dict with `png_path` to the composite image.
     """
     import os as _os
     if not case_dir:
@@ -570,10 +638,20 @@ def classify_change(
     image_after: str = "after",
     case_dir: str = "",
 ):
-    """Run the offline change classifier (precomputed Gemini result) on the
-    case's before/after pair. Returns candidate classes with confidences.
-    `case_dir` is set by the env automatically; the image_* args are kept
-    only to mirror the production schema.
+    """Ask a general-purpose VLM (precomputed Gemini result) what kind of
+    change is visible between the before/after RGB images. This is a
+    coarse, RGB-only opinion — useful as a prior, but it can be wrong on
+    subtle changes (e.g. burn scars often look like 'no_change' or 'cloud'
+    in plain RGB). Cross-check with spectral evidence when stakes are high.
+
+    Args:
+        image_before, image_after: ignored — the env binds the current
+            case automatically. Pass any non-empty strings (kept for
+            schema parity with the production tool).
+
+    Returns: dict with `classes` (list of {name, confidence}) and
+    optional `bboxes`. Class names are free-form (e.g. "no_change",
+    "cloud", "fire", "flood", "deforestation").
     """
     import os as _os
     if not case_dir:
@@ -602,10 +680,24 @@ Goals:
 - Attach the raw image only when text alone cannot convey the situation.
 - Always terminate with exactly one of: submit_to_ground(...) or drop().
 
+Approach:
+- The question is whether something noteworthy CHANGED between before and after.
+  Single-timepoint signals tell you what is there now; tools whose name contains
+  "delta" / "change" tell you what is different. Use the latter when the
+  question is about change.
+- Each spectral index in `compute_index` / `compute_index_delta` is sensitive
+  to a different kind of surface (vegetation, water, burn, built-up, snow).
+  Read the docstrings and pick the index whose definition matches the kind
+  of change you care about.
+- A single tool call usually isn't enough to be confident — corroborate one
+  signal with another (e.g. a numerical delta with a false-color visual).
+
 Style:
-- Think briefly in natural language before each tool call (one sentence).
+- Think briefly in natural language before each tool call (one sentence
+  explaining what you expect to see and why).
 - One tool call per step.
-- Stop as soon as you have enough information.
+- Stop as soon as you have enough evidence; don't keep calling tools after
+  the picture is clear.
 """
 
 
