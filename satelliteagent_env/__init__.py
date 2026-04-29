@@ -242,8 +242,15 @@ def _summarize_message(msg) -> dict:
 
 
 _PRECOMPUTE_TOOL_NAMES = {
+    # Vision tools that read precomputed YAML/PNG from <case_dir>/...
     "compute_index", "compute_index_delta", "fetch_band", "false_color",
-    "classify_change", "get_spectral_guide",
+    "classify_change", "zoom_in",
+    # Context tools that read per-case info from <case_dir>/...
+    "get_region_info", "get_history",
+    # Action drafting & budget tools also receive case_dir (ignored or
+    # used for state binding) — keeping them in the set lets the env
+    # inject case_dir uniformly without breaking the tool functions.
+    "compute_area", "check_downlink_budget", "estimate_size", "compose_report",
 }
 
 
@@ -477,41 +484,49 @@ def _read_yaml(path):
         return None
 
 
+_VALID_INDICES = ["NBR", "NDVI", "NDWI", "MNDWI", "NDBI", "NDSI"]
+_VALID_WHICHES = ["before", "after"]
+_VALID_BANDS = ["B2", "B3", "B4", "B8", "B11", "B12"]
+_FALSE_COLOR_COMBOS = {
+    "natural":    "red-green-blue",
+    "color-ir":   "nir-red-green",
+    "burn":       "swir22-nir-red",
+    "vegetation": "swir16-nir-blue",
+    "water":      "nir-swir16-red",
+}
+
+
 def compute_index(
-    index: str,
-    which: str = "after",
+    index: str = "",
     case_dir: str = "",
 ):
-    """Compute a single-timepoint Sentinel-2 spectral index over the scene.
+    """Sentinel-2 spectral index statistics over the scene, for both
+    snapshots (before and after).
 
-    The two arguments answer two different questions:
-      `index` = WHICH SURFACE PROPERTY to measure (a spectral-index name).
-      `which` = WHICH SNAPSHOT to measure it on (a timepoint selector).
-    They are NOT interchangeable — values like "after" / "before" belong
-    only in `which`, never in `index`.
+    All arguments are optional — calling with no arguments returns ALL
+    six indices for both snapshots in one shot, which is the simplest
+    way to get an overview.
 
     Args:
-        index (string): name of the spectral index. The defined indices
-            are:
-              - "NBR"   — Normalized Burn Ratio (B8, B12). Burn scars /
-                          charred surfaces stand out.
+        index (string, optional): name of one specific spectral index to
+            return. When omitted (default), every index below is returned.
+              - "NBR"   — Normalized Burn Ratio (B8, B12). Sensitive to
+                          burn scars and charred / dry surfaces.
               - "NDVI"  — Vegetation index (B8, B4). High on green plants.
               - "NDWI"  — Water index (B3, B8). High on open water.
-              - "MNDWI" — Modified water index (B3, B11). More robust to
-                          built-up areas than NDWI.
+              - "MNDWI" — Modified water index (B3, B11). Robust to
+                          built-up areas.
               - "NDBI"  — Built-up index (B11, B8). High on urban surface.
               - "NDSI"  — Snow/ice index (B3, B11). High on snow.
-        which (string): snapshot selector. Exactly one of:
-              - "before" — the previous satellite pass.
-              - "after"  — the current pass.
 
     Returns:
-        dict with stats {min, max, mean, median, frac_decrease_strong,
-        frac_increase_strong} plus `png_path` to the pseudo-color heatmap.
+        dict mapping `<INDEX>_<which>` to its stats {min, max, mean,
+        median, frac_decrease_strong, frac_increase_strong} plus
+        `png_path`. E.g. result["NBR_after"]["mean"].
 
     Example:
-        compute_index(index="NBR", which="after")
-        → returns the NBR map over the after-pass scene.
+        compute_index() → all six indices × {before, after}
+        compute_index(index="NBR") → only NBR for both snapshots
 
     A single-timepoint index tells you what is there NOW. To detect a
     CHANGE between the two passes, use `compute_index_delta` instead.
@@ -519,169 +534,171 @@ def compute_index(
     import os as _os
     if not case_dir:
         return {"error": "no case context (env did not inject case_dir)"}
-    stats_path = _os.path.join(case_dir, "compute_index", f"{index}__{which}.stats.yaml")
-    png_path   = _os.path.join(case_dir, "compute_index", f"{index}__{which}.png")
-    data = _read_yaml(stats_path)
-    if data is None:
-        return {"error": f"not cached: compute_index(index={index}, which={which})"}
-    out = dict(data.get("response") or {})
-    if _os.path.isfile(png_path):
-        out["png_path"] = png_path
-    return out
+    sel = [index] if index in _VALID_INDICES else _VALID_INDICES
+    out = {}
+    for idx in sel:
+        for wh in _VALID_WHICHES:
+            stats_path = _os.path.join(
+                case_dir, "compute_index", f"{idx}__{wh}.stats.yaml"
+            )
+            png_path = _os.path.join(
+                case_dir, "compute_index", f"{idx}__{wh}.png"
+            )
+            data = _read_yaml(stats_path)
+            if data is None:
+                continue
+            response = dict(data.get("response") or {})
+            if _os.path.isfile(png_path):
+                response["png_path"] = png_path
+            out[f"{idx}_{wh}"] = response
+    return out if out else {"error": "no compute_index data cached"}
 
 
 def compute_index_delta(
-    index: str,
+    index: str = "",
     case_dir: str = "",
 ):
-    """Compute Δ = (After − Before) for a Sentinel-2 spectral index. Use
-    this whenever the question is about CHANGE between the two passes
-    (vegetation loss, burn, water cover change, urbanization, snow melt).
+    """Δ = (After − Before) for Sentinel-2 spectral indices. Use this
+    whenever the question is about CHANGE between the two passes (burn,
+    flood, deforestation, urbanization, snow melt).
 
-    There is no `which` argument — both snapshots are loaded automatically
-    and the difference is taken. `index` selects WHICH SURFACE PROPERTY
-    to delta; values like "after" / "before" do not belong here.
+    `index` is optional. When omitted, deltas for ALL six indices are
+    returned in one shot (overview). Specify `index` to focus on one.
 
     Args:
-        index (string): name of the spectral index. Same set as
-            `compute_index`. Pick the index that matches the surface
-            property whose change you want to measure:
-              - "NBR"   — Δ drops (becomes negative) when surfaces turn
-                          into burned / charred state.
-              - "NDVI"  — Δ drops on vegetation loss (deforestation, burn
-                          scar, drought, harvest).
+        index (string, optional): name of one spectral index to delta.
+            When omitted (default), all six indices are returned.
+              - "NBR"   — Δ drops (negative) on burn / charring.
+              - "NDVI"  — Δ drops on vegetation loss (deforestation,
+                          burn scar, drought, harvest).
               - "NDWI"  — Δ rises on flooding, drops on drying.
               - "MNDWI" — Same as NDWI but more robust to built-up land.
               - "NDBI"  — Δ rises on new built-up surfaces.
               - "NDSI"  — Δ tracks snow gain / loss.
 
     Returns:
-        dict with delta stats. Key fields:
-          - mean — Δ averaged over the scene (sign + magnitude indicate
-            the direction and intensity of change).
-          - frac_decrease_strong — fraction of pixels where Δ is strongly
-            negative (large local drops).
-          - frac_increase_strong — fraction of pixels with strong positive Δ.
+        dict mapping each `<INDEX>` to its delta stats:
+          - mean — Δ averaged over the scene (sign + magnitude).
+          - frac_decrease_strong — fraction of pixels strongly negative.
+          - frac_increase_strong — fraction of pixels strongly positive.
           - png_path — diverging heatmap (red = decrease, blue = increase).
 
     Example:
-        compute_index_delta(index="NBR")
-        → returns Δ NBR (after − before) over the scene.
+        compute_index_delta() → all six indices' deltas
+        compute_index_delta(index="NBR") → only NBR's delta
     """
     import os as _os
     if not case_dir:
         return {"error": "no case context (env did not inject case_dir)"}
-    stats_path = _os.path.join(case_dir, "compute_index_delta", f"{index}.stats.yaml")
-    png_path   = _os.path.join(case_dir, "compute_index_delta", f"{index}.png")
-    data = _read_yaml(stats_path)
-    if data is None:
-        return {"error": f"not cached: compute_index_delta(index={index})"}
-    out = dict(data.get("response") or {})
-    if _os.path.isfile(png_path):
-        out["png_path"] = png_path
-    return out
+    sel = [index] if index in _VALID_INDICES else _VALID_INDICES
+    out = {}
+    for idx in sel:
+        stats_path = _os.path.join(
+            case_dir, "compute_index_delta", f"{idx}.stats.yaml"
+        )
+        png_path = _os.path.join(
+            case_dir, "compute_index_delta", f"{idx}.png"
+        )
+        data = _read_yaml(stats_path)
+        if data is None:
+            continue
+        response = dict(data.get("response") or {})
+        if _os.path.isfile(png_path):
+            response["png_path"] = png_path
+        out[idx] = response
+    return out if out else {"error": "no compute_index_delta data cached"}
 
 
 def fetch_band(
-    band: str,
-    which: str = "after",
+    band: str = "",
     case_dir: str = "",
 ):
-    """Fetch a single Sentinel-2 surface-reflectance band as a grayscale
-    PNG plus stats. Lower-level than `compute_index`; only use this when
-    you need to see a raw band in isolation.
+    """Sentinel-2 surface-reflectance bands as grayscale PNGs plus stats.
+    Lower-level than `compute_index`; only use this when you need to see
+    a raw band in isolation.
 
-    `band` here is exactly one Sentinel-2 band identifier (NOT a multi-
-    band combo name — those belong to `false_color`). `which` is the
-    timepoint selector and never mixes with `band`.
+    `band` is optional. When omitted, all six bands' (after) stats are
+    returned in one shot. The before snapshot is also included when
+    cached.
 
     Args:
-        band (string): exactly one of the Sentinel-2 band identifiers:
+        band (string, optional): one of:
               - "B2"  — Blue (~490 nm)
               - "B3"  — Green (~560 nm)
               - "B4"  — Red (~665 nm)
-              - "B8"  — Near-infrared / NIR (~842 nm). Vegetation reflects
-                        strongly; water and burn scars are dark.
-              - "B11" — SWIR1 (~1610 nm). Burned and water-stressed
-                        surfaces stand out.
-              - "B12" — SWIR2 (~2200 nm). Strongest response to fire /
-                        burn scars.
-        which (string): snapshot selector. Exactly one of "before" or
-            "after".
+              - "B8"  — NIR (~842 nm). Vegetation = bright; water /
+                        burn scars = dark.
+              - "B11" — SWIR1 (~1610 nm). Burned / water-stressed bright.
+              - "B12" — SWIR2 (~2200 nm). Strongest fire / burn-scar
+                        response.
+            When omitted (default), all six bands are returned.
 
     Returns:
-        dict with stats {min, max, mean, std} and `png_path`.
+        dict mapping `<BAND>_<which>` to {min, max, mean, std} + png_path.
+        E.g. result["B12_after"]["mean"].
 
     Example:
-        fetch_band(band="B12", which="after")
-        → returns the SWIR2 band of the after-pass scene.
-
-    A spectral index is usually more discriminative than a single band;
-    prefer `compute_index` / `compute_index_delta` for most decisions.
+        fetch_band() → all six bands × {before, after} (if cached)
+        fetch_band(band="B12") → only B12 for both snapshots
     """
     import os as _os
     if not case_dir:
         return {"error": "no case context (env did not inject case_dir)"}
-    stats_path = _os.path.join(case_dir, "fetch_band", f"{band}__{which}.stats.yaml")
-    png_path   = _os.path.join(case_dir, "fetch_band", f"{band}__{which}.png")
-    data = _read_yaml(stats_path)
-    if data is None:
-        return {"error": f"not cached: fetch_band(band={band}, which={which})"}
-    out = dict(data.get("response") or {})
-    if _os.path.isfile(png_path):
-        out["png_path"] = png_path
-    return out
+    sel = [band] if band in _VALID_BANDS else _VALID_BANDS
+    out = {}
+    for b in sel:
+        for wh in _VALID_WHICHES:
+            stats_path = _os.path.join(case_dir, "fetch_band", f"{b}__{wh}.stats.yaml")
+            png_path   = _os.path.join(case_dir, "fetch_band", f"{b}__{wh}.png")
+            data = _read_yaml(stats_path)
+            if data is None:
+                continue
+            response = dict(data.get("response") or {})
+            if _os.path.isfile(png_path):
+                response["png_path"] = png_path
+            out[f"{b}_{wh}"] = response
+    return out if out else {"error": "no fetch_band data cached"}
 
 
 def false_color(
-    bands: list[str],
-    which: str = "after",
+    combo: str = "",
     case_dir: str = "",
 ):
-    """Build an RGB false-color composite from 3 Sentinel-2 bands. Useful
-    for visual confirmation when an index has flagged something — different
-    band orderings make different surface types visually salient.
+    """RGB false-color composites of the after-pass scene. Useful for
+    visual confirmation when a spectral index has flagged something —
+    different band orderings make different surface types salient.
 
-    `bands` MUST be a list of exactly 3 individual band names (not one
-    combined string). The first item becomes the Red channel, the second
-    Green, the third Blue. Internally the env joins them with dashes and
-    looks up the cached PNG, so only the orderings precomputed in the
-    cache are valid.
+    `combo` is optional and is a single keyword (not a band list).
+    Without `combo`, all five composites are returned at once.
 
     Args:
-        bands (list of 3 strings): cached orderings, in [R, G, B] order:
-              - ["nir", "red", "green"]      — standard color-IR.
-                                                Vegetation appears red.
-              - ["swir22", "nir", "red"]     — burn-scar emphasis. Burned
-                                                land = dark red / brown,
-                                                healthy veg = green.
-              - ["swir16", "nir", "blue"]    — agricultural / vegetation
-                                                health.
-              - ["nir", "swir16", "red"]     — water + vegetation contrast.
-              - ["red", "green", "blue"]     — true color (same as the
-                                                original RGB image).
-            (Pseudo-bands "nir", "swir16", "swir22" are aliases for B8 /
-            B11 / B12 in this tool only.)
-        which (string): snapshot selector. Exactly one of "before" or
-            "after".
+        combo (string, optional): which composite to return. One of:
+              - "natural"     — true-color (R=red, G=green, B=blue).
+              - "color-ir"    — color-IR (NIR/Red/Green). Vegetation = red.
+              - "burn"        — burn-scar emphasis (SWIR2/NIR/Red). Burned
+                                land = dark red / brown.
+              - "vegetation"  — vegetation health (SWIR1/NIR/Blue).
+              - "water"       — water + vegetation contrast (NIR/SWIR1/Red).
+            When omitted (default), all five composites are returned.
 
     Returns:
-        dict with `png_path` to the composite image.
+        dict mapping each combo keyword to {png_path, bands}.
 
     Example:
-        false_color(bands=["swir22", "nir", "red"], which="after")
-        → returns the SWIR2/NIR/Red composite of the after pass.
+        false_color() → all five composites
+        false_color(combo="burn") → only the burn-emphasis view
     """
     import os as _os
     if not case_dir:
         return {"error": "no case context (env did not inject case_dir)"}
-    if not isinstance(bands, list) or len(bands) != 3:
-        return {"error": "`bands` must be a list of exactly 3 band names"}
-    combo = "-".join(bands)
-    png_path = _os.path.join(case_dir, "false_color", f"{combo}__{which}.png")
-    if not _os.path.isfile(png_path):
-        return {"error": f"not cached: false_color(bands={bands}, which={which})"}
-    return {"png_path": png_path, "bands": bands, "which": which}
+    sel = [combo] if combo in _FALSE_COLOR_COMBOS else list(_FALSE_COLOR_COMBOS.keys())
+    out = {}
+    for kw in sel:
+        c = _FALSE_COLOR_COMBOS[kw]
+        png_path = _os.path.join(case_dir, "false_color", f"{c}__after.png")
+        if _os.path.isfile(png_path):
+            out[kw] = {"png_path": png_path, "bands": c.split("-")}
+    return out if out else {"error": "no false_color composites cached"}
 
 
 def classify_change(
@@ -714,182 +731,174 @@ def classify_change(
     return data.get("response") or {}
 
 
-# --- Spectral-index reference guide (RAG-style on-demand knowledge) ------
-#
-# Embedded here as a module constant so it's bundled in the env wheel.
-# Mirrors `docs/SPECTRAL_INDEX_GUIDE.md` (English-translated, condensed).
-# Exposed via the `get_spectral_guide(section)` tool below so the model
-# can query the knowledge it needs WITHOUT having to memorize everything
-# from individual tool docstrings.
+# --- Additional production tools (TOOL_SPEC: zoom_in / context / budget /
+# action category). All argument-light or argument-free so the small VLM
+# can call them without arg-hallucination. ----------------------------------
 
-_GUIDE_INDICES = """\
-Sentinel-2 spectral indices used by `compute_index` / `compute_index_delta`.
-
-`index` argument values are the index NAME (e.g. "NBR"); they are NOT
-band names (B12 / nir / swir22 etc. are bands, used by `fetch_band` /
-`false_color` instead).
-
-| index | formula                            | bands       | what it measures |
-|-------|------------------------------------|-------------|------------------|
-| NBR   | (NIR - SWIR2) / (NIR + SWIR2)      | B8, B12     | healthy vegetation cell structure (high NIR) versus charred / dry surfaces (high SWIR2). Burn scars drop NBR strongly. |
-| NDVI  | (NIR - Red)   / (NIR + Red)        | B8, B4      | chlorophyll: leaves absorb Red and reflect NIR. Drops on any vegetation loss. |
-| MNDWI | (Green - SWIR1) / (Green + SWIR1)  | B3, B11     | water bodies: water reflects Green and absorbs SWIR. Rises on flooding / new water. |
-| NDBI  | (SWIR1 - NIR) / (SWIR1 + NIR)      | B11, B8     | high-SWIR surfaces (built-up land, bare soil, charred ground, ash). NOT building-specific; treat as a SECONDARY indicator. |
-| NDWI  | (Green - NIR) / (Green + NIR)      | B3, B8      | alternative water index, less robust to built-up land than MNDWI. |
-| NDSI  | (Green - SWIR1) / (Green + SWIR1)  | B3, B11     | snow / ice (high Green, low SWIR1). |
-"""
-
-_GUIDE_DELTA = """\
-How to read `compute_index_delta` output (Δ = After - Before).
-
-The PNG is a diverging heatmap:
-  - red   pixels: Δ < 0 (index DECREASED)
-  - blue  pixels: Δ > 0 (index INCREASED)
-  - white pixels: Δ ≈ 0 (no change)
-
-Per-index meaning of the direction:
-
-| index  | Δ < 0 (red) means                          | Δ > 0 (blue) means              |
-|--------|--------------------------------------------|---------------------------------|
-| NBR    | burn / charring / vegetation loss (FIRE-specific) | vegetation recovery       |
-| NDVI   | vegetation loss (cause-agnostic: fire, deforestation, drought, harvest) | vegetation gain / seasonal greening |
-| MNDWI  | water has receded                          | new water surface / FLOOD       |
-| NDBI   | a SWIR-high surface has been replaced by vegetation/water | a SWIR-high surface has appeared (built-up, bare soil, ash, char) |
-
-Reading rules:
-- A change in NBR is more burn-specific than a change in NDVI (NDVI also
-  reacts to non-burn vegetation loss).
-- A change in MNDWI is the strongest water-presence signal.
-- NDBI is a secondary indicator. Confirm any "NDBI up" with the matching
-  primary index (NBR for burn, MNDWI for water).
-"""
-
-_GUIDE_PATTERNS = """\
-Typical Δ patterns by disaster / change type. Use this to map an
-observed Δ pattern to a likely class.
-
-| change type        | NBR | NDVI | MNDWI | NDBI | dominant signal |
-|--------------------|-----|------|-------|------|-----------------|
-| fire (wildfire)    | ↓↓ red | ↓ red  | ≈     | ↑ blue | NBR red is dominant |
-| flood / tsunami    | ≈ or ↑ | mixed  | ↑↑ blue | ↓ red  | MNDWI blue is dominant |
-| earthquake (liquefaction) | weak ↓ | ↓ red  | ≈     | ↑ blue | NDVI ↓ + NBR weak + no flood signal |
-| volcanic ash / lava | ↓ red  | ↓ red  | ≈     | ↑ blue | NBR and NDVI both ↓ over a wide area |
-| no_change          | ≈     | ≈      | ≈     | ≈      | all near zero |
-
-Practical disambiguation:
-- fire vs deforestation: both lower NDVI, but ONLY fire strongly lowers
-  NBR (charcoal SWIR signature). Weak NBR drop → favor deforestation.
-- fire vs volcanic vs liquefaction: similar NBR↓ + NDVI↓ + NDBI↑ pattern
-  in spectra alone. They are NOT separable by S2 alone; geographic
-  context (urban / volcanic / fault zone) is needed.
-- flood vs seasonal water-level change: a true flood raises MNDWI on
-  pixels that were previously dry land; seasonal change raises MNDWI
-  only along the river edge.
-"""
-
-_GUIDE_THRESHOLDS = """\
-`frac_decrease_strong` / `frac_increase_strong` use literature thresholds.
-DO NOT compare strong-decrease % across different indices directly: the
-thresholds differ.
-
-| index | |Δ| threshold | reference |
-|-------|---------------|-----------|
-| NBR   | > 0.27        | USGS Key & Benson 2006 (≥0.27 = moderate burn) |
-| NDVI  | > 0.20        | conventional (significant vegetation change) |
-| MNDWI | > 0.30        | Xu 2006 (water-emergence threshold) |
-| NDBI  | > 0.10        | NDBI changes are usually mild, lower threshold |
-
-Read each strong% in the context of its own index:
-- "MNDWI strong↑ = 30%" — strong water signal even at 30%
-- "NDBI strong↓ = 50%" — large but not necessarily decisive
-- The decision should be driven by the index that is physically aligned
-  with the question (NBR for burn, MNDWI for water, NDVI for vegetation).
-
-Note on `mean` vs `frac_strong`:
-- `mean ≈ 0` does NOT mean "no change". A scene where 30% of pixels
-  changed strongly and 70% were untouched also has `mean ≈ 0`. Always
-  check `frac_*_strong` for localized events.
-"""
-
-_GUIDE_REACT = """\
-Recommended ReAct pattern for an agent deciding submit_to_ground vs drop.
-
-Step 1. List candidate change types you cannot rule out (fire, flood,
-        deforestation, no_change, ...).
-Step 2. Use compute_index_delta on the index whose physics matches the
-        most likely candidate (NBR for burn, MNDWI for flood, NDVI for
-        general vegetation change).
-Step 3. Read both `mean` and `frac_decrease_strong` / `frac_increase_strong`.
-        A localized event can have mean≈0 but frac_strong large.
-Step 4. Cross-check with a second source (a different index, false_color
-        for visual confirmation, or classify_change as a coarse prior).
-Step 5. If multiple signals are consistent, terminate (submit_to_ground
-        with change_type, or drop). If signals contradict, query the
-        next-best index. Don't loop forever — terminate within max_turns.
-"""
-
-_GUIDE_SECTIONS = {
-    "indices":    _GUIDE_INDICES,
-    "delta":      _GUIDE_DELTA,
-    "patterns":   _GUIDE_PATTERNS,
-    "thresholds": _GUIDE_THRESHOLDS,
-    "react":      _GUIDE_REACT,
-}
+_ZOOM_TARGETS = {"center", "top-left", "top-right", "bottom-left", "bottom-right", "auto"}
 
 
-def get_spectral_guide(section: str = "indices", case_dir: str = ""):
-    """Look up reference knowledge about Sentinel-2 spectral indices.
-
-    Call this when you are not sure which `index` value to pass to
-    `compute_index` / `compute_index_delta`, how to read Δ direction,
-    or how to map an observed pattern to a change type. The guide is a
-    static reference (not case-specific); the same content is returned
-    for every case.
+def zoom_in(target: str = "center", case_dir: str = ""):
+    """Return a zoomed-in view of part of the scene (before/after pair).
 
     Args:
-        section (string): which part of the guide to return. Exactly one
-            of:
-              - "indices"    — the spectral indices NBR / NDVI / MNDWI /
-                               NDBI / NDWI / NDSI: their formulas, the
-                               bands they use, and what each measures.
-                               Read this when you need to pick an `index`.
-              - "delta"      — how to read `compute_index_delta` output
-                               (red = decrease, blue = increase) per
-                               index. Read this when interpreting Δ.
-              - "patterns"   — typical Δ pattern per change-type
-                               (fire / flood / earthquake / volcanic /
-                               no_change). Use this to map a Δ pattern
-                               to a likely class.
-              - "thresholds" — literature thresholds behind
-                               `frac_decrease_strong` /
-                               `frac_increase_strong`, plus warnings
-                               (don't compare across indices directly,
-                               watch out for `mean ≈ 0` traps).
-              - "react"      — recommended reasoning workflow for the
-                               agent (which index to query first, when
-                               to cross-check, when to terminate).
+        target (string, optional): which part to zoom into. Keyword:
+              - "center" / "auto" — middle of the scene (default)
+              - "top-left", "top-right",
+                "bottom-left", "bottom-right" — quadrants
 
     Returns:
-        dict with `section` (the requested name) and `content` (the
-        markdown text of that section).
-
-    Example:
-        get_spectral_guide(section="indices")
-        → returns the index reference table, then you know NBR is the
-          burn ratio and goes with B8/B12.
+        dict with `before_png`, `after_png`, `target`. The PNGs are the
+        full-scene paths; in production the env crops them.
     """
-    sec = (section or "").strip().lower()
-    if sec in _GUIDE_SECTIONS:
-        return {"section": sec, "content": _GUIDE_SECTIONS[sec]}
+    import os as _os
+    if not case_dir:
+        return {"error": "no case context"}
+    t = target if target in _ZOOM_TARGETS else "center"
     return {
-        "error": f"unknown section {section!r}",
-        "valid_sections": list(_GUIDE_SECTIONS.keys()),
+        "target": t,
+        "note": "training stub: full-scene PNGs returned without crop.",
+        "before_png": _os.path.join(case_dir, "..", "before.png"),
+        "after_png":  _os.path.join(case_dir, "..", "after.png"),
+    }
+
+
+def get_region_info(case_dir: str = ""):
+    """Return geographic context for the current case.
+
+    Args:
+        (none — the env auto-binds the case.)
+
+    Returns:
+        dict with `region`, `country`, `populated`, `infra_nearby`,
+        `lat`, `lon`. Read region context from the precompute cache;
+        falls back to "unknown" entries when not cached.
+    """
+    import os as _os
+    if not case_dir:
+        return {"error": "no case context"}
+    path = _os.path.join(case_dir, "region_info.yaml")
+    data = _read_yaml(path)
+    if data is not None:
+        return data.get("response") or {}
+    # fallback when not cached: harmless empty context
+    return {
+        "region": "unknown",
+        "country": "unknown",
+        "populated": None,
+        "infra_nearby": [],
+        "lat": None,
+        "lon": None,
+    }
+
+
+def get_history(days: int = 30, case_dir: str = ""):
+    """Return prior onboard reports for this location, last N days.
+
+    Args:
+        days (int, optional): lookback window in days. Default 30.
+
+    Returns:
+        dict with `history` (list of {timestamp, report_id, summary})
+        and `days_searched`. In training there is no prior history, so
+        the list is empty.
+    """
+    return {"history": [], "days_searched": int(days) if isinstance(days, int) else 30}
+
+
+def compute_area(target: str = "scene", case_dir: str = ""):
+    """Return the area in km^2 of the requested region.
+
+    Args:
+        target (string, optional): "scene" (default — full scene) or one
+            of the zoom targets ("center", "top-left", ...). For a
+            quadrant the area is roughly 1/4 of the full scene.
+
+    Returns:
+        dict with `area_km2`, `target`.
+    """
+    SCENE_AREA_KM2 = 25.0  # roughly 5km × 5km crop
+    factor = 1.0 if target in ("scene", "auto", "center") else 0.25
+    return {"target": target, "area_km2": round(SCENE_AREA_KM2 * factor, 2)}
+
+
+def check_downlink_budget(case_dir: str = ""):
+    """Return remaining downlink budget for the current pass window.
+
+    Args:
+        (none.)
+
+    Returns:
+        dict with `bytes_remaining`, `seconds_until_window_close`.
+    """
+    return {
+        "bytes_remaining": 4_200_000,
+        "seconds_until_window_close": 180,
+    }
+
+
+def estimate_size(with_image: bool = False, case_dir: str = ""):
+    """Estimate the size in bytes of a report transmission.
+
+    Args:
+        with_image (bool, optional): True if the report attaches the
+            raw image (~420 KB extra). Default False.
+
+    Returns:
+        dict with `bytes`, `with_image`.
+    """
+    base = 2000
+    img = 420_000 if with_image else 0
+    return {"bytes": base + img, "with_image": bool(with_image)}
+
+
+def compose_report(
+    change_type: str = "no_change",
+    urgency: str = "low",
+    attach_image: bool = False,
+    case_dir: str = "",
+):
+    """Draft an onboard report locally. This DOES NOT transmit; you
+    must follow it with `submit_to_ground` to actually downlink.
+
+    Args:
+        change_type (string, optional): label for the change. Free-form
+            (e.g. "fire", "flood", "deforestation", "no_change").
+        urgency (string, optional): one of "low", "medium", "high".
+        attach_image (bool, optional): whether the planned report
+            attaches the raw image.
+
+    Returns:
+        dict with `report_id` (auto-generated, pass it to
+        `submit_to_ground`), plus the fields you provided.
+    """
+    import time as _time, random as _random
+    rid = f"r-{int(_time.time())}-{_random.randint(1000, 9999)}"
+    return {
+        "report_id": rid,
+        "change_type": change_type,
+        "urgency": urgency,
+        "attach_image": bool(attach_image),
     }
 
 
 _REAL_TOOLS = [
-    get_spectral_guide,
-    compute_index, compute_index_delta, fetch_band, false_color, classify_change,
+    # Vision (6)
+    classify_change,
+    compute_index,
+    compute_index_delta,
+    fetch_band,
+    false_color,
+    zoom_in,
+    # Context (3)
+    get_region_info,
+    get_history,
+    compute_area,
+    # Budget (2)
+    check_downlink_budget,
+    estimate_size,
+    # Action drafting (1) — submit_to_ground / drop come from base_tools
+    compose_report,
 ]
 
 
@@ -912,14 +921,17 @@ Approach:
   Single-timepoint signals tell you what is there now; tools whose name contains
   "delta" / "change" tell you what is different. Use the latter when the
   question is about change.
+- All lookup tools accept their main argument as OPTIONAL — calling with no
+  arguments returns an overview (e.g. `compute_index_delta()` returns deltas
+  for every index in one shot). Specify an argument only when you want to
+  focus on one item.
 - Each spectral index in `compute_index` / `compute_index_delta` is sensitive
   to a different kind of surface (vegetation, water, burn, built-up, snow).
-  If you are unsure which index to pick, or how to read a Δ value, call
-  `get_spectral_guide` first to look up the reference (sections: "indices",
-  "delta", "patterns", "thresholds", "react"). It is a static reference,
-  one call gives you what you need.
+  Read the per-tool docstrings; pick the index whose definition matches the
+  kind of change you care about.
 - A single tool call usually isn't enough to be confident — corroborate one
-  signal with another (e.g. a numerical delta with a false-color visual).
+  signal with another (e.g. a numerical delta with a false-color visual,
+  or with regional context from `get_region_info`).
 
 Style:
 - Think briefly in natural language before each tool call (one sentence
