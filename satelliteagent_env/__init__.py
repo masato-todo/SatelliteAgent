@@ -285,7 +285,10 @@ def _build_env_class(precompute_root: str | None = None):
         """
 
         async def setup_state(self, state):
-            # MultiTurnEnv contract: mutate state in place; return value ignored.
+            # The pinned verifiers (prime-rl rev 77a9f28) does
+            # `state = await self.setup_state(state)`, so we MUST return state.
+            # Master verifiers later switched to "mutate in place, return ignored",
+            # but returning state remains compatible with both.
             try:
                 _debug_log(
                     f"setup_state ENTER state_type={type(state).__name__} "
@@ -300,6 +303,7 @@ def _build_env_class(precompute_root: str | None = None):
                 state["terminal_action"] = None
                 state["tool_call_log"] = []
                 _debug_log(f"setup_state OK case_id={state.get('case_id')!r}")
+                return state
             except Exception as _e:
                 import traceback as _tb
                 _debug_log(f"setup_state RAISED {_e!r}\n{_tb.format_exc()}")
