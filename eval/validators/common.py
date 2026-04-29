@@ -202,3 +202,59 @@ async def terminal_reached(completion, info, **_kw) -> float:
     """
     name, _ = _terminal_call(completion)
     return 1.0 if name in TERMINAL else 0.0
+
+
+async def grounded_action_match(completion, info, **_kw) -> float:
+    """Reward 1.0 only when the terminal action is correct AND was preceded
+    by at least one successful (non-error) lookup tool call.
+
+    Rationale: S21 traces showed that the model exploits the positive
+    prior by submitting blindly without ever calling a lookup tool.
+    `action_match` rewards both "blind submit that happens to be right"
+    and "grounded submit that's right" identically. This reward function
+    only credits grounded decisions, so blind correct submissions stop
+    receiving the bonus signal — pushing the model toward an
+    "investigate-then-decide" policy.
+
+    A tool message counts as "successful" when:
+      - its role == "tool"
+      - its content does NOT contain `'error'` (env returns
+        `{'error': '...'}` strings on cache miss / bad args).
+      - it appears BEFORE the terminal tool call in the completion
+        order.
+
+    Returns 0.0 if either condition fails (wrong action, or right action
+    but no successful evidence preceded it).
+    """
+    if not isinstance(completion, list):
+        return 0.0
+    target = _expected(info).get("action")
+    name, _ = _terminal_call(completion)
+    if name is None or name != target:
+        return 0.0
+
+    # Walk completion in order; ensure a non-error tool message exists
+    # BEFORE the first terminal tool call.
+    for msg in completion:
+        # Did we hit the terminal call? Stop searching for evidence after.
+        tcs = getattr(msg, "tool_calls", None)
+        if tcs is None and isinstance(msg, dict):
+            tcs = msg.get("tool_calls")
+        if tcs:
+            for tc in tcs:
+                if isinstance(tc, dict):
+                    tc_name = tc.get("name") or (tc.get("function") or {}).get("name")
+                else:
+                    tc_name = getattr(tc, "name", None)
+                if tc_name in TERMINAL:
+                    # No evidence accumulated before the terminal call.
+                    return 0.0
+        # Otherwise, check tool messages
+        s = _tool_msg_content_str(msg)
+        if s and "'error'" not in s and '"error"' not in s and not s.startswith("{'error"):
+            role = getattr(msg, "role", None)
+            if role is None and isinstance(msg, dict):
+                role = msg.get("role")
+            if role == "tool":
+                return 1.0  # found evidence before terminal
+    return 0.0

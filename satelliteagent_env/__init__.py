@@ -1036,16 +1036,18 @@ def _real_dataset(data_root: str) -> "Dataset":
 def _real_rubric(weights: dict | None = None) -> "vf.Rubric":
     """Build the Rubric from eval.validators.common.
 
-    Default weights (S16 v6 traces showed action_match alone gives no signal
-    to a 450M model that fails to call tools with valid args):
-    - action_match: 1.0 — primary correctness signal.
+    Default weights (S22: split action_match into raw vs grounded after
+    S21 traces revealed the model was exploiting the positive prior by
+    blind-submitting without investigating):
+    - action_match: 0.5 — base credit for being right.
+    - grounded_action_match: 1.0 — BIG bonus when the correct action is
+        preceded by at least one successful (non-error) lookup tool call.
+        This makes "investigate then decide" worth ~3× more than "blind
+        right submit", killing the prior-exploitation shortcut.
     - valid_tool_args: 0.3 — partial credit for calling lookup tools with
-        args the env actually accepts (index='NBR', band='B11', etc.).
-        Crucial for small VLMs that otherwise loop on hallucinated args.
-    - terminal_reached: 0.1 — small bias toward actually terminating
-        (rather than running out of max_turns).
-    - attach_image / urgency / change_type: weight 0 (off until basic loop
-        learns to terminate correctly).
+        args the env actually accepts.
+    - terminal_reached: 0.1 — small bias toward actually terminating.
+    - attach / urgency / change_type: 0.0 (off until basic loop learns).
     """
     import verifiers as vf
     from eval.validators.common import (
@@ -1055,10 +1057,12 @@ def _real_rubric(weights: dict | None = None) -> "vf.Rubric":
         change_type_match,
         valid_tool_args,
         terminal_reached,
+        grounded_action_match,
     )
 
     w = {
-        "action": 1.0,
+        "action": 0.5,
+        "grounded_action": 1.0,
         "valid_tool_args": 0.3,
         "terminal_reached": 0.1,
         "attach": 0.0,
@@ -1070,6 +1074,7 @@ def _real_rubric(weights: dict | None = None) -> "vf.Rubric":
     return vf.Rubric(
         funcs=[
             action_match,
+            grounded_action_match,
             valid_tool_args,
             terminal_reached,
             attach_image_match,
@@ -1078,6 +1083,7 @@ def _real_rubric(weights: dict | None = None) -> "vf.Rubric":
         ],
         weights=[
             w["action"],
+            w["grounded_action"],
             w["valid_tool_args"],
             w["terminal_reached"],
             w["attach"],
