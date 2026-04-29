@@ -713,9 +713,18 @@ def _real_dataset(data_root: str) -> "Dataset":
 
 
 def _real_rubric(weights: dict | None = None) -> "vf.Rubric":
-    """Build the Rubric from eval.validators.common. Phase 5b smoke uses
-    only `action_match`; the optional validators are wired but weight=0 so
-    they don't affect learning until we turn them on explicitly.
+    """Build the Rubric from eval.validators.common.
+
+    Default weights (S16 v6 traces showed action_match alone gives no signal
+    to a 450M model that fails to call tools with valid args):
+    - action_match: 1.0 — primary correctness signal.
+    - valid_tool_args: 0.3 — partial credit for calling lookup tools with
+        args the env actually accepts (index='NBR', band='B11', etc.).
+        Crucial for small VLMs that otherwise loop on hallucinated args.
+    - terminal_reached: 0.1 — small bias toward actually terminating
+        (rather than running out of max_turns).
+    - attach_image / urgency / change_type: weight 0 (off until basic loop
+        learns to terminate correctly).
     """
     import verifiers as vf
     from eval.validators.common import (
@@ -723,14 +732,37 @@ def _real_rubric(weights: dict | None = None) -> "vf.Rubric":
         attach_image_match,
         urgency_match,
         change_type_match,
+        valid_tool_args,
+        terminal_reached,
     )
 
-    w = {"action": 1.0, "attach": 0.0, "urgency": 0.0, "change_type": 0.0}
+    w = {
+        "action": 1.0,
+        "valid_tool_args": 0.3,
+        "terminal_reached": 0.1,
+        "attach": 0.0,
+        "urgency": 0.0,
+        "change_type": 0.0,
+    }
     if weights:
         w.update(weights)
     return vf.Rubric(
-        funcs=[action_match, attach_image_match, urgency_match, change_type_match],
-        weights=[w["action"], w["attach"], w["urgency"], w["change_type"]],
+        funcs=[
+            action_match,
+            valid_tool_args,
+            terminal_reached,
+            attach_image_match,
+            urgency_match,
+            change_type_match,
+        ],
+        weights=[
+            w["action"],
+            w["valid_tool_args"],
+            w["terminal_reached"],
+            w["attach"],
+            w["urgency"],
+            w["change_type"],
+        ],
     )
 
 
