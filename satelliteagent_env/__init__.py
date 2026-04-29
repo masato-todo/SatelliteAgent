@@ -32,6 +32,30 @@ if TYPE_CHECKING:
 from tools.stubs import STUB_TOOLS, submit_to_ground, drop
 
 
+# === module-import-time debug breadcrumb =====================================
+# Writes UNCONDITIONALLY (no env var gate) so we can verify whether THIS module
+# is being imported by the env worker at all. Catches: stale wheel deployed,
+# env var stripped by mp.spawn, module failing to import. Path is hardcoded so
+# even if env vars are missing the file appears.
+def _import_breadcrumb() -> None:
+    try:
+        import os as _os, time as _time, sys as _sys
+        path = "/kaggle/working/outputs/satelliteagent_import.log"
+        _os.makedirs(_os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(
+                f"{_time.time():.3f} pid={_os.getpid()} ppid={_os.getppid()} "
+                f"argv0={_sys.argv[0] if _sys.argv else '?'} "
+                f"DEBUG_LOG_set={_os.environ.get('SATELLITEAGENT_DEBUG_LOG', '<UNSET>')!r} "
+                f"TRACE_PATH_set={_os.environ.get('SATELLITEAGENT_TRACE_PATH', '<UNSET>')!r}\n"
+            )
+    except Exception:
+        pass
+
+
+_import_breadcrumb()
+
+
 def _expose_for_vf(fn: Callable) -> Callable:
     """Strip leading-underscore ``**_extra``-style varkw from a function's
     signature so verifiers' pydantic-v2 backed tool converter accepts it.
@@ -733,6 +757,17 @@ def load_environment(
         max_turns: orchestrator multi-turn cap. 1 = single tool_call (smoke),
             >=2 = lookup tools usable before final terminal action.
     """
+    _import_breadcrumb()  # second breadcrumb: load_environment was actually called
+    try:
+        import os as _o, time as _t
+        with open("/kaggle/working/outputs/satelliteagent_import.log", "a", encoding="utf-8") as _f:
+            _f.write(
+                f"{_t.time():.3f} pid={_o.getpid()} load_environment ENTER "
+                f"toy={toy} data_root={data_root!r} precompute_root={precompute_root!r} "
+                f"max_turns={max_turns}\n"
+            )
+    except Exception: pass
+
     SatelliteToolEnv = _build_env_class(precompute_root)
     # Terminal tools always exposed. Precompute lookup tools are added via
     # `add_tool(..., args_to_skip=["case_dir"])` so the model NEVER sees
@@ -765,7 +800,32 @@ def load_environment(
         # (assistant emits one terminal tool_call, env stops via @vf.stop).
         max_turns=max_turns,
     )
+    try:
+        import os as _o, time as _t
+        with open("/kaggle/working/outputs/satelliteagent_import.log", "a", encoding="utf-8") as _f:
+            _f.write(
+                f"{_t.time():.3f} pid={_o.getpid()} env_constructed "
+                f"tool_map_keys={list(getattr(env, 'tool_map', {}).keys())}\n"
+            )
+    except Exception: pass
     if precompute_root:
         for t in _REAL_TOOLS:
-            env.add_tool(t, args_to_skip=["case_dir"])
+            try:
+                env.add_tool(t, args_to_skip=["case_dir"])
+            except Exception as _e:
+                import traceback as _tb, os as _o, time as _t
+                with open("/kaggle/working/outputs/satelliteagent_import.log", "a", encoding="utf-8") as _f:
+                    _f.write(
+                        f"{_t.time():.3f} pid={_o.getpid()} add_tool RAISED "
+                        f"tool={getattr(t, '__name__', '?')} err={_e!r}\n{_tb.format_exc()}\n"
+                    )
+                raise
+    try:
+        import os as _o, time as _t
+        with open("/kaggle/working/outputs/satelliteagent_import.log", "a", encoding="utf-8") as _f:
+            _f.write(
+                f"{_t.time():.3f} pid={_o.getpid()} load_environment RETURN "
+                f"tool_map_keys={list(getattr(env, 'tool_map', {}).keys())}\n"
+            )
+    except Exception: pass
     return env
