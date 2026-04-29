@@ -140,6 +140,83 @@ def _toy_rubric() -> "vf.Rubric":
     return vf.Rubric(funcs=[action_match], weights=[1.0])
 
 
+def _scrub_content_for_trace(content):
+    """Strip base64 image bodies from message `content` so traces stay small."""
+    if isinstance(content, str):
+        return content[:1000]
+    if isinstance(content, list):
+        out = []
+        for part in content:
+            if not isinstance(part, dict):
+                out.append(repr(part)[:200]); continue
+            ptype = part.get("type")
+            if ptype == "text":
+                out.append({"type": "text", "text": (part.get("text") or "")[:1000]})
+            elif ptype == "image_url":
+                url = (part.get("image_url") or {}).get("url", "")
+                if isinstance(url, str) and url.startswith("data:"):
+                    out.append({"type": "image_url", "image_url": {"url": url[:64] + f"...<{len(url)}b>"}})
+                else:
+                    out.append({"type": "image_url", "image_url": {"url": str(url)[:200]}})
+            else:
+                out.append({"type": ptype, "_truncated": True})
+        return out
+    return repr(content)[:300]
+
+
+def _summarize_message(msg) -> dict:
+    """Convert a chat message (dict or pydantic model) into a JSON-safe summary.
+
+    Captures role, scrubbed content, tool_calls (name + parsed JSON args) and
+    tool result content. Designed for offline analysis of multi-turn traces.
+    """
+    if hasattr(msg, "model_dump"):
+        try:
+            d = msg.model_dump()
+        except Exception:
+            d = {}
+    elif isinstance(msg, dict):
+        d = msg
+    else:
+        d = {"_repr": repr(msg)[:300]}
+
+    role = d.get("role") or getattr(msg, "role", None)
+    out = {"role": role}
+
+    content = d.get("content", getattr(msg, "content", None))
+    if content is not None:
+        out["content"] = _scrub_content_for_trace(content)
+
+    tool_calls = d.get("tool_calls") or getattr(msg, "tool_calls", None) or []
+    if tool_calls:
+        tcs = []
+        import json as _json
+        for tc in tool_calls:
+            if hasattr(tc, "model_dump"):
+                try: td = tc.model_dump()
+                except Exception: td = {}
+            elif isinstance(tc, dict):
+                td = tc
+            else:
+                td = {}
+            fn = td.get("function") or {}
+            name = fn.get("name") or td.get("name") or getattr(tc, "name", None)
+            raw_args = fn.get("arguments") if isinstance(fn, dict) else None
+            if raw_args is None:
+                raw_args = td.get("arguments")
+            parsed = raw_args
+            if isinstance(raw_args, str):
+                try: parsed = _json.loads(raw_args)
+                except Exception: parsed = raw_args[:500]
+            tcs.append({"name": name, "args": parsed})
+        out["tool_calls"] = tcs
+
+    if role == "tool":
+        out["tool_call_id"] = d.get("tool_call_id")
+        out["name"] = d.get("name")
+    return out
+
+
 def _build_env_class(precompute_root: str | None = None):
     """Build the StatefulToolEnv subclass at call time so `verifiers` import
     is deferred. Returns the class object.
@@ -165,6 +242,8 @@ def _build_env_class(precompute_root: str | None = None):
             state["expected_action"] = info.get("expected_action", "")
             state["case_id"] = info.get("case_id", "")
             state["terminal_called"] = False
+            state["terminal_action"] = None
+            state["tool_call_log"] = []
             return state
 
         def update_tool_args(self, tool_name: str, tool_args: dict, *args, **kwargs) -> dict:
@@ -182,8 +261,18 @@ def _build_env_class(precompute_root: str | None = None):
                 if case_id:
                     tool_args["case_dir"] = os.path.join(_precompute_root, case_id)
 
+            if state is not None:
+                # Best-effort tool-call ledger (separate from `tool_calls` in
+                # messages so we don't depend on verifiers' message shape).
+                log = state.setdefault("tool_call_log", [])
+                # Record a shallow copy minus the injected case_dir so the log
+                # reflects what the model actually emitted.
+                logged_args = {k: v for k, v in tool_args.items() if k != "case_dir"}
+                log.append({"name": tool_name, "args": logged_args})
+
             if state is not None and tool_name in {"submit_to_ground", "drop"}:
                 state["terminal_called"] = True
+                state["terminal_action"] = tool_name
             return tool_args
 
         @vf.stop
@@ -195,7 +284,90 @@ def _build_env_class(precompute_root: str | None = None):
             """
             return bool(state.get("terminal_called"))
 
+        async def rollout(self, *args, **kwargs):
+            """Wrap parent rollout to dump a JSONL trace per rollout when
+            ``SATELLITEAGENT_TRACE_PATH`` is set. Failures are swallowed so a
+            broken tracer never breaks training.
+            """
+            result = await super().rollout(*args, **kwargs)
+            try:
+                _maybe_dump_trace(result, args, kwargs)
+            except Exception as _e:
+                # Emit one stderr line so we notice silent breakage but never
+                # raise into the orchestrator's gather.
+                import sys as _sys
+                print(f"[satelliteagent_env] trace dump failed: {_e!r}", file=_sys.stderr)
+            return result
+
     return _SatelliteToolEnv
+
+
+def _maybe_dump_trace(rollout_result, call_args, call_kwargs) -> None:
+    """If SATELLITEAGENT_TRACE_PATH is set, append one JSON line summarizing
+    the rollout (case_id, terminal action, full message trace with images
+    scrubbed, tool-call ledger). Best-effort; tolerant to verifiers shape
+    changes.
+    """
+    import os, json, time, threading
+    path = os.environ.get("SATELLITEAGENT_TRACE_PATH", "").strip()
+    if not path:
+        return
+
+    # verifiers' rollout typically returns (completion, state) but be liberal.
+    completion, state = None, None
+    if isinstance(rollout_result, tuple):
+        if len(rollout_result) >= 2:
+            completion, state = rollout_result[0], rollout_result[1]
+        elif rollout_result:
+            completion = rollout_result[0]
+    elif isinstance(rollout_result, dict):
+        completion = rollout_result.get("completion") or rollout_result.get("messages")
+        state = rollout_result.get("state")
+    else:
+        completion = rollout_result
+
+    # Fallback: dig state out of call_kwargs/args.
+    if state is None:
+        state = call_kwargs.get("state")
+        if state is None:
+            for a in call_args:
+                if isinstance(a, dict) and ("case_id" in a or "expected_action" in a or "expected" in a or "info" in a):
+                    state = a; break
+    state = state or {}
+
+    expected = state.get("expected_action")
+    if not expected:
+        exp = (state.get("info") or {}).get("expected") or {}
+        expected = exp.get("action") if isinstance(exp, dict) else None
+
+    msgs_summary = []
+    if isinstance(completion, list):
+        for m in completion:
+            try:
+                msgs_summary.append(_summarize_message(m))
+            except Exception as e:
+                msgs_summary.append({"_summary_error": repr(e)})
+
+    entry = {
+        "ts": time.time(),
+        "pid": os.getpid(),
+        "case_id": state.get("case_id"),
+        "expected_action": expected,
+        "terminal_called": bool(state.get("terminal_called")),
+        "terminal_action": state.get("terminal_action"),
+        "tool_call_log": state.get("tool_call_log") or [],
+        "n_messages": len(msgs_summary),
+        "messages": msgs_summary,
+    }
+
+    line = json.dumps(entry, ensure_ascii=False, default=str)
+    # Best-effort thread-safe append. Multiple workers may race; we accept
+    # interleaved writes since each line is one full JSON object.
+    lock = _maybe_dump_trace.__dict__.setdefault("_lock", threading.Lock())
+    with lock:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
 
 
 # --- Precompute lookup tools (Phase 5b real-tool path) -------------------
