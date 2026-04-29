@@ -242,7 +242,8 @@ def _summarize_message(msg) -> dict:
 
 
 _PRECOMPUTE_TOOL_NAMES = {
-    "compute_index", "compute_index_delta", "fetch_band", "false_color", "classify_change",
+    "compute_index", "compute_index_delta", "fetch_band", "false_color",
+    "classify_change", "get_spectral_guide",
 }
 
 
@@ -713,7 +714,183 @@ def classify_change(
     return data.get("response") or {}
 
 
-_REAL_TOOLS = [compute_index, compute_index_delta, fetch_band, false_color, classify_change]
+# --- Spectral-index reference guide (RAG-style on-demand knowledge) ------
+#
+# Embedded here as a module constant so it's bundled in the env wheel.
+# Mirrors `docs/SPECTRAL_INDEX_GUIDE.md` (English-translated, condensed).
+# Exposed via the `get_spectral_guide(section)` tool below so the model
+# can query the knowledge it needs WITHOUT having to memorize everything
+# from individual tool docstrings.
+
+_GUIDE_INDICES = """\
+Sentinel-2 spectral indices used by `compute_index` / `compute_index_delta`.
+
+`index` argument values are the index NAME (e.g. "NBR"); they are NOT
+band names (B12 / nir / swir22 etc. are bands, used by `fetch_band` /
+`false_color` instead).
+
+| index | formula                            | bands       | what it measures |
+|-------|------------------------------------|-------------|------------------|
+| NBR   | (NIR - SWIR2) / (NIR + SWIR2)      | B8, B12     | healthy vegetation cell structure (high NIR) versus charred / dry surfaces (high SWIR2). Burn scars drop NBR strongly. |
+| NDVI  | (NIR - Red)   / (NIR + Red)        | B8, B4      | chlorophyll: leaves absorb Red and reflect NIR. Drops on any vegetation loss. |
+| MNDWI | (Green - SWIR1) / (Green + SWIR1)  | B3, B11     | water bodies: water reflects Green and absorbs SWIR. Rises on flooding / new water. |
+| NDBI  | (SWIR1 - NIR) / (SWIR1 + NIR)      | B11, B8     | high-SWIR surfaces (built-up land, bare soil, charred ground, ash). NOT building-specific; treat as a SECONDARY indicator. |
+| NDWI  | (Green - NIR) / (Green + NIR)      | B3, B8      | alternative water index, less robust to built-up land than MNDWI. |
+| NDSI  | (Green - SWIR1) / (Green + SWIR1)  | B3, B11     | snow / ice (high Green, low SWIR1). |
+"""
+
+_GUIDE_DELTA = """\
+How to read `compute_index_delta` output (Δ = After - Before).
+
+The PNG is a diverging heatmap:
+  - red   pixels: Δ < 0 (index DECREASED)
+  - blue  pixels: Δ > 0 (index INCREASED)
+  - white pixels: Δ ≈ 0 (no change)
+
+Per-index meaning of the direction:
+
+| index  | Δ < 0 (red) means                          | Δ > 0 (blue) means              |
+|--------|--------------------------------------------|---------------------------------|
+| NBR    | burn / charring / vegetation loss (FIRE-specific) | vegetation recovery       |
+| NDVI   | vegetation loss (cause-agnostic: fire, deforestation, drought, harvest) | vegetation gain / seasonal greening |
+| MNDWI  | water has receded                          | new water surface / FLOOD       |
+| NDBI   | a SWIR-high surface has been replaced by vegetation/water | a SWIR-high surface has appeared (built-up, bare soil, ash, char) |
+
+Reading rules:
+- A change in NBR is more burn-specific than a change in NDVI (NDVI also
+  reacts to non-burn vegetation loss).
+- A change in MNDWI is the strongest water-presence signal.
+- NDBI is a secondary indicator. Confirm any "NDBI up" with the matching
+  primary index (NBR for burn, MNDWI for water).
+"""
+
+_GUIDE_PATTERNS = """\
+Typical Δ patterns by disaster / change type. Use this to map an
+observed Δ pattern to a likely class.
+
+| change type        | NBR | NDVI | MNDWI | NDBI | dominant signal |
+|--------------------|-----|------|-------|------|-----------------|
+| fire (wildfire)    | ↓↓ red | ↓ red  | ≈     | ↑ blue | NBR red is dominant |
+| flood / tsunami    | ≈ or ↑ | mixed  | ↑↑ blue | ↓ red  | MNDWI blue is dominant |
+| earthquake (liquefaction) | weak ↓ | ↓ red  | ≈     | ↑ blue | NDVI ↓ + NBR weak + no flood signal |
+| volcanic ash / lava | ↓ red  | ↓ red  | ≈     | ↑ blue | NBR and NDVI both ↓ over a wide area |
+| no_change          | ≈     | ≈      | ≈     | ≈      | all near zero |
+
+Practical disambiguation:
+- fire vs deforestation: both lower NDVI, but ONLY fire strongly lowers
+  NBR (charcoal SWIR signature). Weak NBR drop → favor deforestation.
+- fire vs volcanic vs liquefaction: similar NBR↓ + NDVI↓ + NDBI↑ pattern
+  in spectra alone. They are NOT separable by S2 alone; geographic
+  context (urban / volcanic / fault zone) is needed.
+- flood vs seasonal water-level change: a true flood raises MNDWI on
+  pixels that were previously dry land; seasonal change raises MNDWI
+  only along the river edge.
+"""
+
+_GUIDE_THRESHOLDS = """\
+`frac_decrease_strong` / `frac_increase_strong` use literature thresholds.
+DO NOT compare strong-decrease % across different indices directly: the
+thresholds differ.
+
+| index | |Δ| threshold | reference |
+|-------|---------------|-----------|
+| NBR   | > 0.27        | USGS Key & Benson 2006 (≥0.27 = moderate burn) |
+| NDVI  | > 0.20        | conventional (significant vegetation change) |
+| MNDWI | > 0.30        | Xu 2006 (water-emergence threshold) |
+| NDBI  | > 0.10        | NDBI changes are usually mild, lower threshold |
+
+Read each strong% in the context of its own index:
+- "MNDWI strong↑ = 30%" — strong water signal even at 30%
+- "NDBI strong↓ = 50%" — large but not necessarily decisive
+- The decision should be driven by the index that is physically aligned
+  with the question (NBR for burn, MNDWI for water, NDVI for vegetation).
+
+Note on `mean` vs `frac_strong`:
+- `mean ≈ 0` does NOT mean "no change". A scene where 30% of pixels
+  changed strongly and 70% were untouched also has `mean ≈ 0`. Always
+  check `frac_*_strong` for localized events.
+"""
+
+_GUIDE_REACT = """\
+Recommended ReAct pattern for an agent deciding submit_to_ground vs drop.
+
+Step 1. List candidate change types you cannot rule out (fire, flood,
+        deforestation, no_change, ...).
+Step 2. Use compute_index_delta on the index whose physics matches the
+        most likely candidate (NBR for burn, MNDWI for flood, NDVI for
+        general vegetation change).
+Step 3. Read both `mean` and `frac_decrease_strong` / `frac_increase_strong`.
+        A localized event can have mean≈0 but frac_strong large.
+Step 4. Cross-check with a second source (a different index, false_color
+        for visual confirmation, or classify_change as a coarse prior).
+Step 5. If multiple signals are consistent, terminate (submit_to_ground
+        with change_type, or drop). If signals contradict, query the
+        next-best index. Don't loop forever — terminate within max_turns.
+"""
+
+_GUIDE_SECTIONS = {
+    "indices":    _GUIDE_INDICES,
+    "delta":      _GUIDE_DELTA,
+    "patterns":   _GUIDE_PATTERNS,
+    "thresholds": _GUIDE_THRESHOLDS,
+    "react":      _GUIDE_REACT,
+}
+
+
+def get_spectral_guide(section: str = "indices", case_dir: str = ""):
+    """Look up reference knowledge about Sentinel-2 spectral indices.
+
+    Call this when you are not sure which `index` value to pass to
+    `compute_index` / `compute_index_delta`, how to read Δ direction,
+    or how to map an observed pattern to a change type. The guide is a
+    static reference (not case-specific); the same content is returned
+    for every case.
+
+    Args:
+        section (string): which part of the guide to return. Exactly one
+            of:
+              - "indices"    — the spectral indices NBR / NDVI / MNDWI /
+                               NDBI / NDWI / NDSI: their formulas, the
+                               bands they use, and what each measures.
+                               Read this when you need to pick an `index`.
+              - "delta"      — how to read `compute_index_delta` output
+                               (red = decrease, blue = increase) per
+                               index. Read this when interpreting Δ.
+              - "patterns"   — typical Δ pattern per change-type
+                               (fire / flood / earthquake / volcanic /
+                               no_change). Use this to map a Δ pattern
+                               to a likely class.
+              - "thresholds" — literature thresholds behind
+                               `frac_decrease_strong` /
+                               `frac_increase_strong`, plus warnings
+                               (don't compare across indices directly,
+                               watch out for `mean ≈ 0` traps).
+              - "react"      — recommended reasoning workflow for the
+                               agent (which index to query first, when
+                               to cross-check, when to terminate).
+
+    Returns:
+        dict with `section` (the requested name) and `content` (the
+        markdown text of that section).
+
+    Example:
+        get_spectral_guide(section="indices")
+        → returns the index reference table, then you know NBR is the
+          burn ratio and goes with B8/B12.
+    """
+    sec = (section or "").strip().lower()
+    if sec in _GUIDE_SECTIONS:
+        return {"section": sec, "content": _GUIDE_SECTIONS[sec]}
+    return {
+        "error": f"unknown section {section!r}",
+        "valid_sections": list(_GUIDE_SECTIONS.keys()),
+    }
+
+
+_REAL_TOOLS = [
+    get_spectral_guide,
+    compute_index, compute_index_delta, fetch_band, false_color, classify_change,
+]
 
 
 # --- Real dataset (Phase 5b: read raw canonical_dataset.yaml directly) ----
@@ -737,8 +914,10 @@ Approach:
   question is about change.
 - Each spectral index in `compute_index` / `compute_index_delta` is sensitive
   to a different kind of surface (vegetation, water, burn, built-up, snow).
-  Read the docstrings and pick the index whose definition matches the kind
-  of change you care about.
+  If you are unsure which index to pick, or how to read a Δ value, call
+  `get_spectral_guide` first to look up the reference (sections: "indices",
+  "delta", "patterns", "thresholds", "react"). It is a static reference,
+  one call gives you what you need.
 - A single tool call usually isn't enough to be confident — corroborate one
   signal with another (e.g. a numerical delta with a false-color visual).
 
