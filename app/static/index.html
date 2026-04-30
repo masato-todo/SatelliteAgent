@@ -32,8 +32,8 @@
       <select id="vlm-model"></select>
     </label>
     <p class="hint" style="opacity:0.7; font-size:12px; margin-top:8px;">
-      Used by <code>classify_change (VLM)</code>. Selection is saved per-browser.
-      Run Agent currently requires the Gemini provider.
+      Used by <code>classify_change (VLM)</code> and Run Agent. Selection is saved per-browser.
+      Default: local vLLM serving LFM2.5-VL on <code>127.0.0.1:8000</code>.
     </p>
     <div class="modal-buttons">
       <button id="settings-close-btn">Close</button>
@@ -243,6 +243,12 @@
         <button id="traces-list-btn" class="ph-action" title="View saved traces (read / delete)">📂 Traces</button>
         <button id="annotate-btn" class="ph-action">● Start Recording</button>
       </div>
+
+      <details id="agent-instructions-row" style="margin: 6px 0; font-size: 12px;">
+        <summary style="cursor: pointer; opacity: 0.75;">Operator instructions (optional)</summary>
+        <textarea id="agent-instructions" rows="2" style="width: 100%; margin-top: 4px; font-family: inherit;"
+          placeholder="e.g. Focus on the western shoreline. Ignore cloud cover over the lake."></textarea>
+      </details>
 
       <div id="annotate-controls" hidden>
         <div class="a-row">
