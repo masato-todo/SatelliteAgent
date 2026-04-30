@@ -1059,62 +1059,23 @@ def _real_dataset(data_root: str) -> "Dataset":
 
 
 def _real_rubric(weights: dict | None = None) -> "vf.Rubric":
-    """Build the Rubric from eval.validators.common.
+    """Single-reward rubric (S25): one class-balanced action_match.
 
-    Default weights (S22: split action_match into raw vs grounded after
-    S21 traces revealed the model was exploiting the positive prior by
-    blind-submitting without investigating):
-    - action_match: 0.5 — base credit for being right.
-    - grounded_action_match: 1.0 — BIG bonus when the correct action is
-        preceded by at least one successful (non-error) lookup tool call.
-        This makes "investigate then decide" worth ~3× more than "blind
-        right submit", killing the prior-exploitation shortcut.
-    - valid_tool_args: 0.3 — partial credit for calling lookup tools with
-        args the env actually accepts.
-    - terminal_reached: 0.1 — small bias toward actually terminating.
-    - attach / urgency / change_type: 0.0 (off until basic loop learns).
+    Earlier rubrics combined action_match / grounded_action_match /
+    valid_tool_args / terminal_reached and the model learned to game the
+    grounded reward by calling any cheap tool (compute_area) before
+    submitting. With this minimal rubric, the only signal is whether the
+    final action is correct, weighted to neutralize the dataset's
+    positive prior (51 pos : 16 neg). See `balanced_action_match`.
+
+    The other validators stay importable but are not in the active rubric.
     """
     import verifiers as vf
-    from eval.validators.common import (
-        action_match,
-        attach_image_match,
-        urgency_match,
-        change_type_match,
-        valid_tool_args,
-        terminal_reached,
-        grounded_action_match,
-    )
+    from eval.validators.common import balanced_action_match
 
-    w = {
-        "action": 0.5,
-        "grounded_action": 1.0,
-        "valid_tool_args": 0.3,
-        "terminal_reached": 0.1,
-        "attach": 0.0,
-        "urgency": 0.0,
-        "change_type": 0.0,
-    }
-    if weights:
-        w.update(weights)
     return vf.Rubric(
-        funcs=[
-            action_match,
-            grounded_action_match,
-            valid_tool_args,
-            terminal_reached,
-            attach_image_match,
-            urgency_match,
-            change_type_match,
-        ],
-        weights=[
-            w["action"],
-            w["grounded_action"],
-            w["valid_tool_args"],
-            w["terminal_reached"],
-            w["attach"],
-            w["urgency"],
-            w["change_type"],
-        ],
+        funcs=[balanced_action_match],
+        weights=[1.0],
     )
 
 

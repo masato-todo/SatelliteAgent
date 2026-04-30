@@ -204,6 +204,34 @@ async def terminal_reached(completion, info, **_kw) -> float:
     return 1.0 if name in TERMINAL else 0.0
 
 
+async def balanced_action_match(completion, info, **_kw) -> float:
+    """Class-weighted action match. The only reward we actually care about,
+    weighted to neutralize the dataset's positive prior.
+
+    Dataset is 51 positive : 16 negative, so an "always submit" policy
+    gets ~0.76 raw accuracy. To make that policy uncompetitive, we weight
+    a correct drop ~3× a correct submit (51/16 ≈ 3.19 → rounded to 3.0).
+
+    Returns:
+        0.0  if the terminal action is missing or wrong.
+        1.0  if expected="submit_to_ground" and the model submitted.
+        3.0  if expected="drop" and the model dropped.
+
+    Expected per-rollout averages:
+      - always-submit policy:  0.76 * 1.0 + 0.24 * 0   = 0.76
+      - always-drop   policy:  0.76 * 0   + 0.24 * 3.0 = 0.72
+      - perfect agent:         0.76 * 1.0 + 0.24 * 3.0 = 1.48
+
+    Both trivial policies sit near 0.75, so the model has to actually
+    distinguish positives from negatives to climb above that.
+    """
+    target = _expected(info).get("action")
+    name, _ = _terminal_call(completion)
+    if name is None or name != target:
+        return 0.0
+    return 1.0 if target == "submit_to_ground" else 3.0
+
+
 async def grounded_action_match(completion, info, **_kw) -> float:
     """Reward 1.0 only when the terminal action is correct AND was preceded
     by at least one successful (non-error) lookup tool call.
