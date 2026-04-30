@@ -237,19 +237,63 @@ _INDEX_TERMS = (
     "delta", "frac_decrease", "frac_increase",
     "swir", "nir", "rededge",
 )
+_ALL_INDICES = {"NBR", "NDVI", "NDWI", "MNDWI", "NDBI", "NDSI"}
+
+
+def _fetched_indices(completion) -> set:
+    """Return the set of spectral indices the model actually fetched
+    via compute_index / compute_index_delta in this rollout.
+
+    Calling either tool with no `index` arg returns all six → treated
+    as fetching the full set.
+    """
+    fetched: set = set()
+    if not isinstance(completion, list):
+        return fetched
+    for msg in completion:
+        tcs = getattr(msg, "tool_calls", None)
+        if tcs is None and isinstance(msg, dict):
+            tcs = msg.get("tool_calls")
+        for tc in (tcs or []):
+            if isinstance(tc, str):
+                try:
+                    tc = json.loads(tc)
+                except Exception:
+                    continue
+            if isinstance(tc, dict):
+                fn_name = tc.get("name") or (tc.get("function") or {}).get("name")
+                fn_args = (
+                    tc.get("arguments")
+                    or tc.get("args")
+                    or (tc.get("function") or {}).get("arguments")
+                    or {}
+                )
+            else:
+                fn_name = getattr(tc, "name", None)
+                fn_args = getattr(tc, "args", None) or getattr(tc, "arguments", None) or {}
+            if fn_name not in ("compute_index", "compute_index_delta"):
+                continue
+            if isinstance(fn_args, str):
+                try:
+                    fn_args = json.loads(fn_args)
+                except Exception:
+                    fn_args = {}
+            if not isinstance(fn_args, dict):
+                continue
+            idx = fn_args.get("index")
+            if isinstance(idx, str) and idx in _ALL_INDICES:
+                fetched.add(idx)
+            else:
+                fetched.update(_ALL_INDICES)
+    return fetched
 
 
 async def reason_grounded(completion, info, **_kw) -> float:
-    """Reward 0.5 if the terminal call's `reason` arg cites a spectral
-    grounding term (index name like NBR/NDVI, or "delta", "swir", etc).
+    """LEGACY (S27): +0.5 if reason mentions any index term.
 
-    Cheap structural reward: forces the model to put SOMETHING about the
-    physics into the reason field. Combined with balanced_action_match
-    (weight 1.0/3.0) it nudges toward grounded justification without
-    dominating correctness.
-
-    Returns 0.0 when no terminal action was called or reason is missing /
-    too short.
+    Allows the copy-paste exploit (model parrots an example reason from
+    the system prompt regardless of action). Replaced by
+    `reason_grounded_correct` from S28 onward.
     """
     name, args = _terminal_call(completion)
     if name is None:
@@ -259,6 +303,31 @@ async def reason_grounded(completion, info, **_kw) -> float:
         return 0.0
     low = reason.lower()
     return 0.5 if any(t in low for t in _INDEX_TERMS) else 0.0
+
+
+async def reason_grounded_correct(completion, info, **_kw) -> float:
+    """+0.5 only when ALL of:
+      1. terminal action matches expected (correctness),
+      2. reason mentions an index NAME that was actually fetched via
+         compute_index / compute_index_delta in this rollout (true
+         grounding, not parroting an example).
+
+    Closes the S27 copy-paste exploit: a wrong-action rollout with a
+    plausible-looking reason now gets 0.0, and even correct rollouts
+    must have actually queried the index they cite.
+    """
+    target = _expected(info).get("action")
+    name, args = _terminal_call(completion)
+    if name is None or name != target:
+        return 0.0
+    reason = args.get("reason") if isinstance(args, dict) else None
+    if not isinstance(reason, str) or len(reason.strip()) < 8:
+        return 0.0
+    fetched = _fetched_indices(completion)
+    if not fetched:
+        return 0.0
+    low = reason.lower()
+    return 0.5 if any(idx.lower() in low for idx in fetched) else 0.0
 
 
 async def grounded_action_match(completion, info, **_kw) -> float:

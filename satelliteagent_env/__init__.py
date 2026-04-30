@@ -919,45 +919,18 @@ _REAL_TOOLS = [
 
 # Mirrors agent/react_loop.py SYSTEM_PROMPT so the env runs the model under
 # the same system prompt as production RunAgent.
-_REAL_SYSTEM_PROMPT = """You are an onboard satellite operator agent running on NVIDIA Orin 16GB.
+_REAL_SYSTEM_PROMPT = """You are an onboard satellite operator agent.
 
-You are shown a Sentinel-2 image pair (before = previous pass, after = current pass) of the same
-location. Your job is to decide what to report to the ground station.
+You are shown a Sentinel-2 image pair (before / after) of the same location.
+Decide whether to transmit a report to ground (submit_to_ground) or discard
+the data (drop). Always terminate with exactly one terminal tool call.
 
-Goals:
-- Minimize downlink bandwidth usage while preserving critical information.
-- Attach the raw image only when text alone cannot convey the situation.
-- Always terminate with exactly one of: submit_to_ground(...) or drop().
+The terminal tools take a required `reason` argument. Cite the spectral
+evidence you actually observed via your lookup tools (index name, the
+numerical change). Do not leave `reason` empty or generic.
 
-Approach:
-- The question is whether something noteworthy CHANGED between before and after.
-  Single-timepoint signals tell you what is there now; tools whose name contains
-  "delta" / "change" tell you what is different. Use the latter when the
-  question is about change.
-- All lookup tools accept their main argument as OPTIONAL — calling with no
-  arguments returns an overview (e.g. `compute_index_delta()` returns deltas
-  for every index in one shot). Specify an argument only when you want to
-  focus on one item.
-- Each spectral index in `compute_index` / `compute_index_delta` is sensitive
-  to a different kind of surface (vegetation, water, burn, built-up, snow).
-  Read the per-tool docstrings; pick the index whose definition matches the
-  kind of change you care about.
-- A single tool call usually isn't enough to be confident — corroborate one
-  signal with another (e.g. a numerical delta with a false-color visual,
-  or with regional context from `get_region_info`).
-
-Reasoning is required, and goes inside the terminal tool call:
-- Both `submit_to_ground` and `drop` take a required `reason` argument.
-- `reason` must cite the spectral evidence you actually observed: the
-  index name and the numbers (e.g. "NBR delta frac_decrease_strong = 0.78,
-  well above burn threshold ~0.27 -> wildfire").
-- Do NOT leave `reason` empty or generic ("looks like fire" is wrong;
-  "NBR Δ mean = -0.31, swir22 brightening, wildfire" is right).
-
-Style:
-- Investigate first (1-3 lookup tool calls), then commit to a terminal call.
-- Stop as soon as the evidence is conclusive — don't keep calling tools
-  after the picture is clear.
+Investigate first with the lookup tools, then commit. Stop as soon as
+the evidence is conclusive.
 """
 
 
@@ -1011,9 +984,11 @@ def _image_part(path: str) -> dict:
     return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
 
 
-def _real_dataset(data_root: str) -> "Dataset":
+def _real_dataset(data_root: str, system_prompt: str | None = None) -> "Dataset":
     import yaml
     from datasets import Dataset
+
+    sp = system_prompt if (isinstance(system_prompt, str) and system_prompt.strip()) else _REAL_SYSTEM_PROMPT
 
     canonical_path = f"{data_root}/canonical_dataset.yaml"
     with open(canonical_path) as f:
@@ -1034,7 +1009,7 @@ def _real_dataset(data_root: str) -> "Dataset":
                 # mixed string/list content across rows of the same column with
                 # "cannot mix list and non-list, non-null values".
                 {"role": "system", "content": [
-                    {"type": "text", "text": _REAL_SYSTEM_PROMPT},
+                    {"type": "text", "text": sp},
                 ]},
                 {"role": "user", "content": [
                     {"type": "text",  "text": "Before image (previous satellite pass over this location):"},
@@ -1065,25 +1040,27 @@ def _real_dataset(data_root: str) -> "Dataset":
 
 
 def _real_rubric(weights: dict | None = None) -> "vf.Rubric":
-    """S27: balanced action match (1.0/3.0) + reason_grounded (+0.5).
+    """S28: balanced action match (1.0/3.0) + reason_grounded_correct (+0.5).
 
-    Reason is now an arg of the terminal tool (`submit_to_ground(reason=...)`,
-    `drop(reason=...)`), so we can grade the justification structurally
-    without relying on free-form assistant text (which the hermes parser
-    discards under tool_choice="required").
+    `reason_grounded_correct` only fires when:
+      1. action is correct, AND
+      2. reason mentions a spectral index that was actually fetched in
+         this rollout (compute_index / compute_index_delta).
+
+    Closes the S27 exploit where the model parroted an example reason
+    from the system prompt without observation grounding.
 
     Per-rollout reward upper bounds:
-      - correct submit + grounded reason: 1.0 + 0.5 = 1.5
-      - correct drop   + grounded reason: 3.0 + 0.5 = 3.5
-      - correct action, ungrounded reason: 1.0 / 3.0
-      - wrong action: 0.0 (reason_grounded is gated on the terminal call,
-        but balanced_action_match is the dominant signal anyway)
+      - correct submit + grounded: 1.5
+      - correct drop   + grounded: 3.5
+      - correct, ungrounded:        1.0 / 3.0
+      - wrong action:               0.0
     """
     import verifiers as vf
-    from eval.validators.common import balanced_action_match, reason_grounded
+    from eval.validators.common import balanced_action_match, reason_grounded_correct
 
     return vf.Rubric(
-        funcs=[balanced_action_match, reason_grounded],
+        funcs=[balanced_action_match, reason_grounded_correct],
         weights=[1.0, 1.0],
     )
 
@@ -1094,6 +1071,7 @@ def load_environment(
     precompute_root: str | None = None,
     rubric_weights: dict | None = None,
     max_turns: int = 1,
+    system_prompt: str | None = None,
     **kwargs: Any,
 ) -> "vf.Environment":
     """Entry point invoked by `verifiers.load_environment("satelliteagent_env")`.
@@ -1149,7 +1127,7 @@ def load_environment(
         raise ValueError("load_environment(toy=False) requires data_root=<path>")
 
     env = SatelliteToolEnv(
-        dataset=_real_dataset(data_root),
+        dataset=_real_dataset(data_root, system_prompt=system_prompt),
         tools=base_tools,
         rubric=_real_rubric(rubric_weights),
         # When precompute_root is set, lookup tools should be reachable
