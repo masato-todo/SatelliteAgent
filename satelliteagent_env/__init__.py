@@ -486,7 +486,14 @@ def _read_yaml(path):
 
 _VALID_INDICES = ["NBR", "NDVI", "NDWI", "MNDWI", "NDBI", "NDSI"]
 _VALID_WHICHES = ["before", "after"]
-_VALID_BANDS = ["B2", "B3", "B4", "B8", "B11", "B12"]
+# Sentinel-2 band names as used in the precompute cache
+# (human-readable aliases, NOT the B2/B3/.../B12 codes).
+_VALID_BANDS = [
+    "blue", "green", "red",
+    "rededge1", "rededge2", "rededge3",
+    "nir", "nir08", "nir09",
+    "swir16", "swir22",
+]
 _FALSE_COLOR_COMBOS = {
     "natural":    "red-green-blue",
     "color-ir":   "nir-red-green",
@@ -622,24 +629,30 @@ def fetch_band(
     cached.
 
     Args:
-        band (string, optional): one of:
-              - "B2"  — Blue (~490 nm)
-              - "B3"  — Green (~560 nm)
-              - "B4"  — Red (~665 nm)
-              - "B8"  — NIR (~842 nm). Vegetation = bright; water /
-                        burn scars = dark.
-              - "B11" — SWIR1 (~1610 nm). Burned / water-stressed bright.
-              - "B12" — SWIR2 (~2200 nm). Strongest fire / burn-scar
-                        response.
-            When omitted (default), all six bands are returned.
+        band (string, optional): one of the human-readable Sentinel-2
+            band aliases:
+              - "blue"      (~490 nm)
+              - "green"     (~560 nm)
+              - "red"       (~665 nm)
+              - "rededge1"  (~705 nm)
+              - "rededge2"  (~740 nm)
+              - "rededge3"  (~783 nm)
+              - "nir"       (~842 nm). Vegetation = bright; water and
+                            burn scars = dark.
+              - "nir08"     (~865 nm)
+              - "nir09"     (~945 nm)
+              - "swir16"    (~1610 nm). Burned / water-stressed bright.
+              - "swir22"    (~2200 nm). Strongest fire / burn-scar
+                            response.
+            When omitted (default), every band is returned.
 
     Returns:
-        dict mapping `<BAND>_<which>` to {min, max, mean, std} + png_path.
-        E.g. result["B12_after"]["mean"].
+        dict mapping `<band>_<which>` to {min, max, mean, std} + png_path.
+        E.g. result["swir22_after"]["mean"].
 
     Example:
-        fetch_band() → all six bands × {before, after} (if cached)
-        fetch_band(band="B12") → only B12 for both snapshots
+        fetch_band() → every band × {before, after}
+        fetch_band(band="swir22") → only SWIR2 for both snapshots
     """
     import os as _os
     if not case_dir:
