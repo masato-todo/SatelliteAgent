@@ -946,12 +946,27 @@ Approach:
   signal with another (e.g. a numerical delta with a false-color visual,
   or with regional context from `get_region_info`).
 
+Format of your response (IMPORTANT):
+You can mix natural-language reasoning with tool calls in the same
+assistant message. Use this pattern explicitly:
+
+  1. Reason step by step in plain text. State what you observed in the
+     previous tool result, what you still need to know, and what tool you
+     are about to call (and why).
+  2. THEN emit the tool call.
+
+For the final decision, the same pattern applies:
+  1. Summarize the evidence (e.g. "NBR Δ frac_decrease_strong = 0.78,
+     which is well above the burn threshold of ~0.27, so the scene
+     contains a clear burn scar").
+  2. Then emit submit_to_ground(...) or drop().
+
 Style:
-- Think briefly in natural language before each tool call (one sentence
-  explaining what you expect to see and why).
-- One tool call per step.
-- Stop as soon as you have enough evidence; don't keep calling tools after
-  the picture is clear.
+- Always write reasoning text BEFORE the tool call. Empty assistant
+  messages with only tool calls are not useful.
+- Cite the numbers you saw when justifying your decision.
+- Stop as soon as the evidence is conclusive — don't keep calling tools
+  after the picture is clear.
 """
 
 
