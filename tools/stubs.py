@@ -70,20 +70,37 @@ def compose_report(
 
 def submit_to_ground(
     report_id: str,
+    reason: str,
     attach_image: bool = False,
     attach_crop_key: str | None = None,
     **_extra,
 ) -> dict[str, Any]:
+    """Transmit a report to ground.
+
+    Args:
+        report_id: identifier for this report.
+        reason: free-text justification. Cite which spectral index and
+            numbers led to the decision (e.g. "NBR delta frac_decrease_strong
+            = 0.78, well above burn threshold 0.27 -> wildfire").
+    """
     return {
         "status": "ok",
         "report_id": report_id,
+        "reason": reason,
         "attached": attach_image,
         "attached_crop_key": attach_crop_key,
     }
 
 
-def drop() -> dict[str, str]:
-    return {"status": "dropped"}
+def drop(reason: str) -> dict[str, str]:
+    """Drop the data without transmitting.
+
+    Args:
+        reason: free-text justification. Cite which spectral index and
+            numbers led to the no-change decision (e.g. "NBR delta mean
+            ~ 0.0, no fire signal; classify_change top class no_change").
+    """
+    return {"status": "dropped", "reason": reason}
 
 
 STUB_TOOLS: dict[str, Callable[..., Any]] = {

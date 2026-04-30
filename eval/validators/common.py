@@ -232,6 +232,35 @@ async def balanced_action_match(completion, info, **_kw) -> float:
     return 1.0 if target == "submit_to_ground" else 3.0
 
 
+_INDEX_TERMS = (
+    "nbr", "ndvi", "ndwi", "mndwi", "ndbi", "ndsi",
+    "delta", "frac_decrease", "frac_increase",
+    "swir", "nir", "rededge",
+)
+
+
+async def reason_grounded(completion, info, **_kw) -> float:
+    """Reward 0.5 if the terminal call's `reason` arg cites a spectral
+    grounding term (index name like NBR/NDVI, or "delta", "swir", etc).
+
+    Cheap structural reward: forces the model to put SOMETHING about the
+    physics into the reason field. Combined with balanced_action_match
+    (weight 1.0/3.0) it nudges toward grounded justification without
+    dominating correctness.
+
+    Returns 0.0 when no terminal action was called or reason is missing /
+    too short.
+    """
+    name, args = _terminal_call(completion)
+    if name is None:
+        return 0.0
+    reason = args.get("reason") if isinstance(args, dict) else None
+    if not isinstance(reason, str) or len(reason.strip()) < 8:
+        return 0.0
+    low = reason.lower()
+    return 0.5 if any(t in low for t in _INDEX_TERMS) else 0.0
+
+
 async def grounded_action_match(completion, info, **_kw) -> float:
     """Reward 1.0 only when the terminal action is correct AND was preceded
     by at least one successful (non-error) lookup tool call.

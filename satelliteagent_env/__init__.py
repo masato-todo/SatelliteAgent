@@ -946,25 +946,16 @@ Approach:
   signal with another (e.g. a numerical delta with a false-color visual,
   or with regional context from `get_region_info`).
 
-Format of your response (IMPORTANT):
-You can mix natural-language reasoning with tool calls in the same
-assistant message. Use this pattern explicitly:
-
-  1. Reason step by step in plain text. State what you observed in the
-     previous tool result, what you still need to know, and what tool you
-     are about to call (and why).
-  2. THEN emit the tool call.
-
-For the final decision, the same pattern applies:
-  1. Summarize the evidence (e.g. "NBR Δ frac_decrease_strong = 0.78,
-     which is well above the burn threshold of ~0.27, so the scene
-     contains a clear burn scar").
-  2. Then emit submit_to_ground(...) or drop().
+Reasoning is required, and goes inside the terminal tool call:
+- Both `submit_to_ground` and `drop` take a required `reason` argument.
+- `reason` must cite the spectral evidence you actually observed: the
+  index name and the numbers (e.g. "NBR delta frac_decrease_strong = 0.78,
+  well above burn threshold ~0.27 -> wildfire").
+- Do NOT leave `reason` empty or generic ("looks like fire" is wrong;
+  "NBR Δ mean = -0.31, swir22 brightening, wildfire" is right).
 
 Style:
-- Always write reasoning text BEFORE the tool call. Empty assistant
-  messages with only tool calls are not useful.
-- Cite the numbers you saw when justifying your decision.
+- Investigate first (1-3 lookup tool calls), then commit to a terminal call.
 - Stop as soon as the evidence is conclusive — don't keep calling tools
   after the picture is clear.
 """
@@ -1074,23 +1065,26 @@ def _real_dataset(data_root: str) -> "Dataset":
 
 
 def _real_rubric(weights: dict | None = None) -> "vf.Rubric":
-    """Single-reward rubric (S25): one class-balanced action_match.
+    """S27: balanced action match (1.0/3.0) + reason_grounded (+0.5).
 
-    Earlier rubrics combined action_match / grounded_action_match /
-    valid_tool_args / terminal_reached and the model learned to game the
-    grounded reward by calling any cheap tool (compute_area) before
-    submitting. With this minimal rubric, the only signal is whether the
-    final action is correct, weighted to neutralize the dataset's
-    positive prior (51 pos : 16 neg). See `balanced_action_match`.
+    Reason is now an arg of the terminal tool (`submit_to_ground(reason=...)`,
+    `drop(reason=...)`), so we can grade the justification structurally
+    without relying on free-form assistant text (which the hermes parser
+    discards under tool_choice="required").
 
-    The other validators stay importable but are not in the active rubric.
+    Per-rollout reward upper bounds:
+      - correct submit + grounded reason: 1.0 + 0.5 = 1.5
+      - correct drop   + grounded reason: 3.0 + 0.5 = 3.5
+      - correct action, ungrounded reason: 1.0 / 3.0
+      - wrong action: 0.0 (reason_grounded is gated on the terminal call,
+        but balanced_action_match is the dominant signal anyway)
     """
     import verifiers as vf
-    from eval.validators.common import balanced_action_match
+    from eval.validators.common import balanced_action_match, reason_grounded
 
     return vf.Rubric(
-        funcs=[balanced_action_match],
-        weights=[1.0],
+        funcs=[balanced_action_match, reason_grounded],
+        weights=[1.0, 1.0],
     )
 
 
