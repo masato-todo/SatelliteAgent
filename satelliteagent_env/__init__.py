@@ -984,11 +984,16 @@ def _image_part(path: str) -> dict:
     return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
 
 
-def _real_dataset(data_root: str, system_prompt: str | None = None) -> "Dataset":
+def _real_dataset(
+    data_root: str,
+    system_prompt: str | None = None,
+    fewshot: list[dict] | None = None,
+) -> "Dataset":
     import yaml
     from datasets import Dataset
 
     sp = system_prompt if (isinstance(system_prompt, str) and system_prompt.strip()) else _REAL_SYSTEM_PROMPT
+    fs = fewshot if isinstance(fewshot, list) else []
 
     canonical_path = f"{data_root}/canonical_dataset.yaml"
     with open(canonical_path) as f:
@@ -1011,6 +1016,9 @@ def _real_dataset(data_root: str, system_prompt: str | None = None) -> "Dataset"
                 {"role": "system", "content": [
                     {"type": "text", "text": sp},
                 ]},
+                # Few-shot tool-use demonstration (text-only, no images).
+                # Shows the model the expected pattern: lookup -> read result -> terminal.
+                *fs,
                 {"role": "user", "content": [
                     {"type": "text",  "text": "Before image (previous satellite pass over this location):"},
                     _image_part(before),
@@ -1084,6 +1092,7 @@ def load_environment(
     rubric_weights: dict | None = None,
     max_turns: int = 1,
     system_prompt: str | None = None,
+    fewshot_messages_json: str | None = None,
     **kwargs: Any,
 ) -> "vf.Environment":
     """Entry point invoked by `verifiers.load_environment("satelliteagent_env")`.
@@ -1138,8 +1147,24 @@ def load_environment(
     if not data_root:
         raise ValueError("load_environment(toy=False) requires data_root=<path>")
 
+    fewshot_parsed: list[dict] | None = None
+    if isinstance(fewshot_messages_json, str) and fewshot_messages_json.strip():
+        import json as _json
+        try:
+            fewshot_parsed = _json.loads(fewshot_messages_json)
+        except Exception as _e:
+            try:
+                import os as _o, time as _t
+                with open("/kaggle/working/outputs/satelliteagent_import.log", "a", encoding="utf-8") as _f:
+                    _f.write(
+                        f"{_t.time():.3f} pid={_o.getpid()} fewshot_messages_json parse error: {_e!r}\n"
+                    )
+            except Exception:
+                pass
+            fewshot_parsed = None
+
     env = SatelliteToolEnv(
-        dataset=_real_dataset(data_root, system_prompt=system_prompt),
+        dataset=_real_dataset(data_root, system_prompt=system_prompt, fewshot=fewshot_parsed),
         tools=base_tools,
         rubric=_real_rubric(rubric_weights),
         # When precompute_root is set, lookup tools should be reachable
