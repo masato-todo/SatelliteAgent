@@ -330,6 +330,44 @@ async def reason_grounded_correct(completion, info, **_kw) -> float:
     return 0.5 if any(idx.lower() in low for idx in fetched) else 0.0
 
 
+async def lookup_called(completion, info, **_kw) -> float:
+    """+0.2 if at least one successful (non-error) lookup tool message
+    appears BEFORE the terminal call. Independent of action correctness.
+
+    Purpose: provide GRPO with a variance signal when all rollouts in a
+    group commit to the same terminal action. Without this, batches with
+    8 identical "submit_to_ground" rollouts have zero advantage and the
+    model gets no learning signal for changing investigation behavior.
+
+    The reward is intentionally small (0.2 << balanced_action_match's
+    1.0/3.0) so it cannot pay for the S22 exploit ("call cheap tool then
+    blind submit"). It only nudges initial behavior to start with a
+    lookup call so the model can then learn to commit correctly.
+    """
+    if not isinstance(completion, list):
+        return 0.0
+    for msg in completion:
+        tcs = getattr(msg, "tool_calls", None)
+        if tcs is None and isinstance(msg, dict):
+            tcs = msg.get("tool_calls")
+        if tcs:
+            for tc in tcs:
+                if isinstance(tc, dict):
+                    tc_name = tc.get("name") or (tc.get("function") or {}).get("name")
+                else:
+                    tc_name = getattr(tc, "name", None)
+                if tc_name in TERMINAL:
+                    return 0.0  # terminal hit before any successful lookup
+        s = _tool_msg_content_str(msg)
+        if s and "'error'" not in s and '"error"' not in s and not s.startswith("{'error"):
+            role = getattr(msg, "role", None)
+            if role is None and isinstance(msg, dict):
+                role = msg.get("role")
+            if role == "tool":
+                return 0.2
+    return 0.0
+
+
 async def grounded_action_match(completion, info, **_kw) -> float:
     """Reward 1.0 only when the terminal action is correct AND was preceded
     by at least one successful (non-error) lookup tool call.

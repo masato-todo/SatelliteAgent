@@ -1040,28 +1040,40 @@ def _real_dataset(data_root: str, system_prompt: str | None = None) -> "Dataset"
 
 
 def _real_rubric(weights: dict | None = None) -> "vf.Rubric":
-    """S28: balanced action match (1.0/3.0) + reason_grounded_correct (+0.5).
+    """S29: balanced + reason_grounded_correct + lookup_called.
 
-    `reason_grounded_correct` only fires when:
-      1. action is correct, AND
-      2. reason mentions a spectral index that was actually fetched in
-         this rollout (compute_index / compute_index_delta).
+    S28 collapsed to "always submit_to_ground" because:
+      - With tool_choice=required, the model went straight to a terminal
+        call every rollout (no lookup tools).
+      - All-submit policy got 51 * 1.0 = 51 reward vs 16 * 3.0 = 48 for
+        all-drop, so submit narrowly won.
+      - All rollouts in a GRPO group ended identically -> advantage
+        variance = 0 -> no learning signal.
 
-    Closes the S27 exploit where the model parroted an example reason
-    from the system prompt without observation grounding.
+    S29 adds `lookup_called` (+0.2 if any successful lookup tool appears
+    before terminal, independent of correctness). This breaks the
+    no-variance trap: rollouts that investigated get 0.2 over those
+    that didn't, even when both submit. Small weight prevents the S22
+    "call cheap tool then blind submit" exploit since correctness is
+    still worth 1.0+.
 
     Per-rollout reward upper bounds:
-      - correct submit + grounded: 1.5
-      - correct drop   + grounded: 3.5
-      - correct, ungrounded:        1.0 / 3.0
-      - wrong action:               0.0
+      - correct submit + lookup + grounded reason: 1.0 + 0.2 + 0.5 = 1.7
+      - correct drop   + lookup + grounded reason: 3.0 + 0.2 + 0.5 = 3.7
+      - correct, no lookup, no grounding:           1.0 / 3.0
+      - wrong action + lookup only:                 0.2
+      - wrong action, no lookup:                    0.0
     """
     import verifiers as vf
-    from eval.validators.common import balanced_action_match, reason_grounded_correct
+    from eval.validators.common import (
+        balanced_action_match,
+        reason_grounded_correct,
+        lookup_called,
+    )
 
     return vf.Rubric(
-        funcs=[balanced_action_match, reason_grounded_correct],
-        weights=[1.0, 1.0],
+        funcs=[balanced_action_match, reason_grounded_correct, lookup_called],
+        weights=[1.0, 1.0, 1.0],
     )
 
 
