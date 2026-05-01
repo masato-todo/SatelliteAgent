@@ -895,6 +895,42 @@ def compose_report(
     }
 
 
+def analyze(
+    evidence: str,
+    interpretation: str,
+    recommended_action: str,
+    case_dir: str = "",
+):
+    """Record your structured analysis BEFORE deciding the terminal action.
+
+    This tool exists to make reasoning observable: you must commit your
+    evidence + interpretation + recommended_action to the tool arguments
+    (which the env captures), instead of stuffing reasoning into the
+    terminal tool's `reason` field after the fact.
+
+    Args:
+        evidence (string): cite the spectral values you observed in compact
+            form (e.g. "NBR mean=-0.31, frac_decrease_strong=0.87; NDVI also
+            negative").
+        interpretation (string): one of "significant_change" or
+            "no_significant_change".
+        recommended_action (string): one of "submit_to_ground" or "drop".
+            MUST be consistent with `interpretation` (significant_change ->
+            submit_to_ground; no_significant_change -> drop).
+
+    Returns:
+        Echo of the analysis with a reminder to call `recommended_action`
+        next. The action is not executed by this tool.
+    """
+    return {
+        "status": "noted",
+        "evidence": evidence,
+        "interpretation": interpretation,
+        "recommended_action": recommended_action,
+        "next": f"Now call {recommended_action}() with a one-line reason.",
+    }
+
+
 _REAL_TOOLS = [
     # Vision (6)
     classify_change,
@@ -912,6 +948,9 @@ _REAL_TOOLS = [
     estimate_size,
     # Action drafting (1) — submit_to_ground / drop come from base_tools
     compose_report,
+    # Reasoning commitment (1) — caller writes evidence/interpretation/
+    # recommended_action to args before calling submit_to_ground/drop.
+    analyze,
 ]
 
 
