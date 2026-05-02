@@ -1,6 +1,8 @@
 # kaggle/exp002 — Tool response precompute (offline cache)
 
-**Dataset id**: `<KAGGLE_USER>/satelliteagent-precompute-v1`
+**Dataset id**: `<KAGGLE_USER>/satelliteagent-precompute-v2`
+
+> 命名: 旧 `satelliteagent-precompute-v1` は Kaggle CLI が path segment 中の `+` を strip する不具合 (`mcd64a1_h03v06_202308_+2079_-15640/` → `mcd64a1_..._2079_-15640/`) を踏み、67 case 中 44 case が一致しなくなった。case_id 内の `_+\d` を `_p\d` に置換し v2 として再 upload している。
 
 Phase B として `scripts/build_precompute_v2.py` が **Sentinel-2 / Gemini API へのアクセスなしに全ツール出力を返せるようにキャッシュ** したもの。Kaggle 等のオフライン環境で GRPO rollout を回すために必要。
 
@@ -99,7 +101,7 @@ response:
 
 ### `_stats.yaml` (per-case timing)
 ```yaml
-case_id: mcd64a1_h03v06_202308_+2079_-15640
+case_id: mcd64a1_h03v06_202308_p2079_-15640
 timing:
   fetch:                10.2     # 2 STAC searches (before + after, multi-band)
   fetch_band:            1.2     # 22 PNG saves
@@ -123,7 +125,7 @@ timing:
 
 ## case 内訳
 
-`<KAGGLE_USER>/satelliteagent-raw-v1` (= exp001) と同じ 67 case:
+`<KAGGLE_USER>/satelliteagent-raw-v2` (= exp001) と同じ 67 case:
 
 | type | count | expected_action | 由来 |
 |---|---|---|---|
@@ -146,7 +148,7 @@ UPDATE=1 MSG="update" ./upload.sh    # 更新 → kaggle datasets version
 ## Kaggle notebook での読み出し例
 
 ```python
-DATA_ROOT = "/kaggle/input/satelliteagent-precompute-v1"
+DATA_ROOT = "/kaggle/input/satelliteagent-precompute-v2"
 
 import yaml
 from pathlib import Path

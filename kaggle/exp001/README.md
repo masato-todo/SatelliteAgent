@@ -1,6 +1,8 @@
 # kaggle/exp001 — Raw data upload to Kaggle Dataset
 
-**Dataset id**: `<KAGGLE_USER>/satelliteagent-raw-v1`
+**Dataset id**: `<KAGGLE_USER>/satelliteagent-raw-v2`
+
+> 命名: 旧 `satelliteagent-raw-v1` は Kaggle CLI が path segment 中の `+` を strip する不具合 (`mcd64a1_h03v06_202308_+2079_-15640/` → `mcd64a1_..._2079_-15640/`) を踏み、67 case 中 44 case で `curated_pairs/` の dir 名・`canonical_dataset.yaml` の id・`gt_polygons/*.geojson` 名が precompute-v2 側 (`_p2079_`) と mismatch していた。case_id 内の `_+\d` を `_p\d` に置換し v2 として再 upload している。
 
 Phase 1-3 のローカル成果物を **そのまま (raw)** Kaggle に上げる。Kaggle 側の notebook で resize / cases YAML 分割 / SFT format 変換などを行う方針 (再 upload 不要に保つため)。
 

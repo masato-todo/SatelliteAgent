@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # Recreate stage/ from SatelliteAgent data/ and upload to Kaggle as
-# <KAGGLE_USER>/satelliteagent-raw-v2.
+# <KAGGLE_USER>/satelliteagent-raw-v3.
 #
+# v3 adds GDACS volcanic + PRODES deforestation + hard-negative cases on
+# top of the v2 (MCD64A1 wildfire + biome-diverse negative). flood/storm/
+# quake/landslide were tried via EMS but excluded — S2 signal too weak.
 # This is the *raw* dataset (Phase 1-3 outputs as-is). Kaggle notebooks do
 # their own resize / format conversion so we don't have to re-upload when
 # tuning resolution or splits.
 #
 # Usage:
-#   cd kaggle/exp001
+#   cd kaggle/exp003
 #   ./upload.sh                # first time → datasets create
 #   UPDATE=1 ./upload.sh       # subsequent → datasets version
 
