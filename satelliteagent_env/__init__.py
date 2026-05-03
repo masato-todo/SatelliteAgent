@@ -1086,31 +1086,34 @@ def _real_dataset(
     return Dataset.from_list(rows)
 
 
-def _real_rubric(weights: dict | None = None) -> "vf.Rubric":
-    """S29: balanced + reason_grounded_correct + lookup_called.
+def _real_rubric(
+    weights: dict | None = None,
+    extra_rewards_path: str | None = None,
+) -> "vf.Rubric":
+    """Build the GRPO reward rubric.
 
-    S28 collapsed to "always submit_to_ground" because:
-      - With tool_choice=required, the model went straight to a terminal
-        call every rollout (no lookup tools).
-      - All-submit policy got 51 * 1.0 = 51 reward vs 16 * 3.0 = 48 for
-        all-drop, so submit narrowly won.
-      - All rollouts in a GRPO group ended identically -> advantage
-        variance = 0 -> no learning signal.
+    Built-in reward functions are imported from `eval.validators.common`:
+      - balanced_action_match
+      - reason_grounded_correct
+      - lookup_called
 
-    S29 adds `lookup_called` (+0.2 if any successful lookup tool appears
-    before terminal, independent of correctness). This breaks the
-    no-variance trap: rollouts that investigated get 0.2 over those
-    that didn't, even when both submit. Small weight prevents the S22
-    "call cheap tool then blind submit" exploit since correctness is
-    still worth 1.0+.
+    Extra reward functions can be plugged in WITHOUT modifying this env
+    package: write a Python file at `extra_rewards_path` (or set
+    `SATELLITEAGENT_EXTRA_REWARDS_PATH` env var) that defines a top-level
+    dict named `EXTRA_REWARD_FUNCS = {"name": async_fn, ...}`. The notebook
+    can write that file at runtime and reference it via the orchestrator
+    TOML's `[train.env.args] extra_rewards_path = "..."`.
 
-    Per-rollout reward upper bounds:
-      - correct submit + lookup + grounded reason: 1.0 + 0.2 + 0.5 = 1.7
-      - correct drop   + lookup + grounded reason: 3.0 + 0.2 + 0.5 = 3.7
-      - correct, no lookup, no grounding:           1.0 / 3.0
-      - wrong action + lookup only:                 0.2
-      - wrong action, no lookup:                    0.0
+    Args:
+        weights: dict mapping reward-function name to its weight. Both
+            built-ins and extras can be re-weighted here. Default weight
+            for any function not in the dict is 1.0. Set to 0.0 to disable
+            that function entirely.
+        extra_rewards_path: optional path to a Python file defining
+            `EXTRA_REWARD_FUNCS`. Falls back to env var
+            `SATELLITEAGENT_EXTRA_REWARDS_PATH`.
     """
+    import os, time
     import verifiers as vf
     from eval.validators.common import (
         balanced_action_match,
@@ -1118,10 +1121,55 @@ def _real_rubric(weights: dict | None = None) -> "vf.Rubric":
         lookup_called,
     )
 
-    return vf.Rubric(
-        funcs=[balanced_action_match, reason_grounded_correct, lookup_called],
-        weights=[1.0, 1.0, 1.0],
-    )
+    weights = weights or {}
+
+    # Built-in functions with default weights.
+    BUILTIN = [
+        ("balanced_action_match", balanced_action_match, 1.0),
+        ("reason_grounded_correct", reason_grounded_correct, 1.0),
+        ("lookup_called", lookup_called, 1.0),
+    ]
+
+    funcs = []
+    weight_list = []
+    for name, fn, default_w in BUILTIN:
+        w = weights.get(name, default_w)
+        if w > 0:
+            funcs.append(fn)
+            weight_list.append(w)
+
+    # Plug-in: load notebook-defined reward functions from a Python file.
+    extra_path = extra_rewards_path or os.environ.get("SATELLITEAGENT_EXTRA_REWARDS_PATH")
+    if extra_path and os.path.isfile(extra_path):
+        try:
+            ns: dict = {}
+            with open(extra_path, "r", encoding="utf-8") as _f:
+                src = _f.read()
+            exec(compile(src, extra_path, "exec"), ns)
+            extras = ns.get("EXTRA_REWARD_FUNCS") or {}
+            for name, fn in extras.items():
+                w = weights.get(name, 1.0)
+                if w <= 0:
+                    continue
+                funcs.append(fn)
+                weight_list.append(w)
+            try:
+                with open("/kaggle/working/outputs/satelliteagent_import.log", "a", encoding="utf-8") as _lf:
+                    _lf.write(
+                        f"{time.time():.3f} loaded extra_rewards from {extra_path}: "
+                        f"{list(extras.keys())} (weights={ {k: weights.get(k, 1.0) for k in extras.keys()} })\n"
+                    )
+            except Exception:
+                pass
+        except Exception as _e:
+            try:
+                with open("/kaggle/working/outputs/satelliteagent_import.log", "a", encoding="utf-8") as _lf:
+                    _lf.write(f"FAILED loading extra_rewards from {extra_path}: {_e!r}\n")
+            except Exception:
+                pass
+            raise
+
+    return vf.Rubric(funcs=funcs, weights=weight_list)
 
 
 def load_environment(
@@ -1129,6 +1177,7 @@ def load_environment(
     data_root: str | None = None,
     precompute_root: str | None = None,
     rubric_weights: dict | None = None,
+    extra_rewards_path: str | None = None,
     max_turns: int = 1,
     system_prompt: str | None = None,
     fewshot_messages_json: str | None = None,
@@ -1205,7 +1254,7 @@ def load_environment(
     env = SatelliteToolEnv(
         dataset=_real_dataset(data_root, system_prompt=system_prompt, fewshot=fewshot_parsed),
         tools=base_tools,
-        rubric=_real_rubric(rubric_weights),
+        rubric=_real_rubric(rubric_weights, extra_rewards_path),
         # When precompute_root is set, lookup tools should be reachable
         # before the terminal action -> caller passes max_turns >= 2.
         # Without precompute_root, max_turns=1 forces a clean 1-turn rollout
