@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>SatelliteAgent — Mission Control</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="/static/app.css?v=2026042608">
+<link rel="stylesheet" href="/static/app.css?v=2026050605">
 </head>
 <body>
 
@@ -32,8 +32,9 @@
       <select id="vlm-model"></select>
     </label>
     <p class="hint" style="opacity:0.7; font-size:12px; margin-top:8px;">
-      Used by <code>classify_change (VLM)</code>. Selection is saved per-browser.
-      Run Agent currently requires the Gemini provider.
+      Used by <code>classify_change (VLM)</code> and Run Agent. Selection auto-saves per-browser
+      (no Apply needed; Close just dismisses the modal). The actual base_url
+      of each entry is set in <code>config/providers.yaml</code>.
     </p>
     <div class="modal-buttons">
       <button id="settings-close-btn">Close</button>
@@ -84,11 +85,12 @@
 
     <label>
       Search window: <span id="window_days_val">30</span> days
-      <input id="window_days" type="range" min="7" max="90" step="1" value="30">
+      <input id="window_days" type="range" min="1" max="90" step="1" value="30">
     </label>
 
     <div class="buttons">
       <button id="fetch-btn">Fetch Images</button>
+      <button id="fetch-fireedge-btn" style="display:none;" title="Pin the exact Sentinel-2 frame the FireEdge LoRA was trained on: sends sentinel_datetime as the After timestamp with window=1d.">🔥 Fetch FireEdge frame</button>
       <button id="save-pair-btn" title="Persist the currently displayed Before/After as the canonical pair for this scene">Save Before/After</button>
       <select id="cache-pair-select" style="display:none;"></select>
       <button id="cache-use-btn" style="display:none;">Use cache</button>
@@ -130,6 +132,7 @@
         <div class="a-row">
           <button class="tool-btn" data-tool="get_change_stats" title="Computes ALL spectral index deltas (NBR/NDVI/MNDWI/NDBI) and returns mean/median/std/min/max/percentiles + strong↓↑ fractions. Pure data — agent decides class.">get_change_stats</button>
           <button class="tool-btn" data-tool="classify_change" title="VLM-based: uses the provider+model selected above.">classify_change (VLM)</button>
+          <button class="tool-btn" data-tool="detect_wildfire" title="Single-image wildfire detector (LFM2.5-VL-450M-wildfire LoRA via :8085). Builds SWIR22-SWIR16-NIR false-color of the AFTER pass and asks the FireEdge model.">detect_wildfire 🔥</button>
           <button class="tool-btn" data-tool="get_region_info">get_region_info</button>
         </div>
       </div>
@@ -244,6 +247,12 @@
         <button id="annotate-btn" class="ph-action">● Start Recording</button>
       </div>
 
+      <details id="agent-instructions-row" style="margin: 6px 0; font-size: 12px;">
+        <summary style="cursor: pointer; opacity: 0.75;">Operator instructions (optional)</summary>
+        <textarea id="agent-instructions" rows="2" style="width: 100%; margin-top: 4px; font-family: inherit;"
+          placeholder="e.g. Focus on the western shoreline. Ignore cloud cover over the lake."></textarea>
+      </details>
+
       <div id="annotate-controls" hidden>
         <div class="a-row">
           <label>Profile
@@ -287,6 +296,6 @@
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script type="module" src="/static/js/main.js?v=2026042610"></script>
+<script type="module" src="/static/js/main.js?v=2026050606"></script>
 </body>
 </html>

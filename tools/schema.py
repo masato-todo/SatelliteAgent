@@ -140,27 +140,27 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
     # ---- Context ----------------------------------------------------
     {
         "name": "get_region_info",
-        "description": "Look up region name, country, population status, nearby infrastructure.",
+        "description": (
+            "Return region/country/admin info for the CURRENT scene. The "
+            "coordinates are bound server-side from the fetch request — "
+            "no arguments needed and you cannot override them."
+        ),
         "input_schema": {
             "type": "object",
-            "properties": {
-                "lat": {"type": "number"},
-                "lon": {"type": "number"},
-            },
-            "required": ["lat", "lon"],
+            "properties": {},
         },
     },
     {
         "name": "get_history",
-        "description": "Return past onboard reports within `days` for this location.",
+        "description": (
+            "Return past onboard reports for the CURRENT location within "
+            "`days`. Coordinates are bound server-side."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "lat": {"type": "number"},
-                "lon": {"type": "number"},
                 "days": {"type": "integer", "default": 30},
             },
-            "required": ["lat", "lon"],
         },
     },
     {
@@ -214,20 +214,35 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
     },
     {
         "name": "submit_to_ground",
-        "description": "Transmit a composed report to the ground station. Terminal action.",
+        "description": (
+            "Transmit a composed report to the ground station. Terminal action. "
+            "`reason` MUST cite which spectral index/numbers led to the decision."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "report_id": {"type": "string"},
-                "attach_image": {"type": "boolean"},
+                "report_id": {"type": "string",
+                              "description": "The id returned by compose_report. Required."},
+                "reason": {"type": "string",
+                           "description": "Why we are transmitting (cite indices/numbers)."},
+                "attach_image": {"type": "boolean", "default": True},
+                "crop_key": {"type": "string",
+                             "description": "Optional zoom_in crop key to attach."},
             },
-            "required": ["report_id", "attach_image"],
+            "required": ["report_id", "reason", "attach_image"],
         },
     },
     {
         "name": "drop",
-        "description": "Discard everything; no transmission. Terminal action.",
-        "input_schema": {"type": "object", "properties": {}},
+        "description": "Discard everything; no transmission. Terminal action. `reason` MUST justify the no-change decision.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "reason": {"type": "string",
+                           "description": "Why we are not transmitting (cite indices/numbers)."},
+            },
+            "required": ["reason"],
+        },
     },
 ]
 

@@ -63,16 +63,41 @@ def _call_openai_classify(before_path: str, after_path: str, base_url: str,
     except (KeyError, IndexError, ValueError) as e:
         return {"error": f"unexpected response shape: {type(e).__name__}: {e}",
                 "raw_preview": r.text[:400]}
+    # Some servers wrap output in markdown fences; strip if present.
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0]
+
+    # Try strict schema first (Gemini-shaped output). Fine-tuned models
+    # (e.g. LFM2.5-VL wildfire LoRA) return custom labels like "brown_land"
+    # and may omit / float-ify bboxes — fall back to a loose parse.
     try:
-        # Some servers wrap output in markdown fences; strip if present.
-        cleaned = text.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0]
         parsed = ClassifyResult.model_validate_json(cleaned)
         result = parsed.model_dump()
-    except Exception as e:
-        return {"error": f"failed to parse model output: {type(e).__name__}: {e}",
-                "raw_preview": text[:400]}
+    except Exception:
+        try:
+            raw = json.loads(cleaned)
+        except Exception as e:
+            return {"error": f"failed to parse model output: {type(e).__name__}: {e}",
+                    "raw_preview": text[:400]}
+        classes_out: list[dict[str, Any]] = []
+        for c in raw.get("classes") or []:
+            if not isinstance(c, dict):
+                continue
+            name = c.get("name") or c.get("label") or "unknown"
+            try:
+                conf = float(c.get("confidence", c.get("score", 0.0)))
+            except (TypeError, ValueError):
+                conf = 0.0
+            classes_out.append({"name": str(name), "confidence": conf})
+        bboxes_out: list[list[int]] = []
+        for box in raw.get("bboxes") or []:
+            if isinstance(box, (list, tuple)) and len(box) == 4:
+                try:
+                    bboxes_out.append([int(round(float(v))) for v in box])
+                except (TypeError, ValueError):
+                    continue
+        result = {"classes": classes_out, "bboxes": bboxes_out, "loose_parsed": True}
     result["source"] = "openai_compat"
     result["model"] = model
     return result

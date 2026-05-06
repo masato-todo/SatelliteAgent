@@ -26,6 +26,7 @@ header p  { margin: 0; color: #888; font-size: 12px; }
 #simsat-url  { color: #6a9; }
 #provider-info { padding: 1px 6px; border-radius: 3px; font-weight: 600; }
 #provider-info.provider-gemini { background: #2d6b46; color: #c7f0d5; }
+#provider-info.provider-vllm   { background: #2d4f6b; color: #c7e0f0; }
 #provider-info.provider-stub   { background: #7a5a1a; color: #ffd78a; }
 
 main {

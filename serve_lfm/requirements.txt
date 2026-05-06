@@ -1,0 +1,7 @@
+transformers>=5.0.0
+peft>=0.18.0
+accelerate>=1.0.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.30.0
+pillow>=10.0
+torchvision>=0.20

@@ -2,14 +2,36 @@
 # Add new entries to expose more backends; restart server to apply.
 #
 # Each entry:
-#   name:     unique key used by frontend
-#   kind:     gemini | openai_compat
-#   models:   list of model ids selectable in the UI
+#   name:          unique key used by frontend
+#   kind:          gemini | openai_compat
+#   models:        list of model ids selectable in the UI
+#                  (must match what the backend actually serves)
 #   default_model: pre-selected entry
-#   base_url: (openai_compat only) chat-completions root, e.g. http://host:port/v1
-#   api_key_env: (openai_compat only) name of env var for bearer token (optional)
+#   default:       (bool, optional) marks the catalog default. Exactly one
+#                  entry should set this to true; resolution does NOT depend
+#                  on YAML order.
+#   base_url:      (openai_compat only) chat-completions root,
+#                  e.g. http://host:port/v1
+#   api_key_env:   (openai_compat only) name of env var for bearer token
+#                  (optional)
 
 providers:
+  # Local vLLM serving LFM2.5-VL (drives ReAct + classify_change).
+  # Start with e.g.:
+  #   vllm serve <patched-model-dir> \
+  #     --served-model-name lfm25-vl-1.6b \
+  #     --host 127.0.0.1 --port 8002 \
+  #     --dtype bfloat16 --max-model-len 16384 \
+  #     --gpu-memory-utilization 0.80 \
+  #     --enable-auto-tool-choice --tool-call-parser hermes
+  - name: lfm25_vl_local
+    kind: openai_compat
+    base_url: http://127.0.0.1:8002/v1
+    default_model: lfm25-vl-1.6b
+    default: true
+    models:
+      - lfm25-vl-1.6b
+
   - name: gemini
     kind: gemini
     default_model: gemini-2.5-flash
@@ -17,9 +39,16 @@ providers:
       - gemini-2.5-flash
       - gemini-2.5-pro
 
-  - name: lfm25_vl_local
-    kind: openai_compat
-    base_url: http://localhost:8085/v1
-    default_model: lfm2.5-vl-450m
+  # Trained LFM2.5-VL-450M-sft-grpo S64 checkpoint, served by vLLM with the
+  # custom lfm2_pythonic tool parser. This provider goes through the
+  # multi-turn agent loop (agent/lfm2_agent.py) instead of the OpenAI-compat
+  # ReAct loop, since the model emits Python-style [func(arg=...)] tool
+  # calls rather than OpenAI tool_calls JSON.
+  # Requires a DM3 case to be selected (the agent fetches case_meta from
+  # the DM3 catalog, not from the generic Before/After cache).
+  - name: lfm25_vl_sft_grpo
+    kind: lfm2_multiturn
+    base_url: http://127.0.0.1:8086/v1
+    default_model: LFM2.5-VL-450M-sft-grpo
     models:
-      - lfm2.5-vl-450m
+      - LFM2.5-VL-450M-sft-grpo

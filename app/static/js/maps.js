@@ -133,7 +133,7 @@ export async function loadDamageOverlay() {
   if (!state.damageVisible) return;
   if (!state.dm3) return;
   if (!state.imgW || !state.imgH) return;
-  if (state.dm3.source === "MCD64A1") {
+  if (state.dm3.source === "MCD64A1" || state.dm3.source === "PRODES") {
     return loadBurnOverlay();
   }
   if (!state.dm3.precise) return;

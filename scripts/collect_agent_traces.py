@@ -7,7 +7,7 @@ Usage:
     uv run python scripts/collect_agent_traces.py
     uv run python scripts/collect_agent_traces.py --provider gemini --model gemini-2.5-flash
     uv run python scripts/collect_agent_traces.py --replicas 3
-    uv run python scripts/collect_agent_traces.py --only-id mcd64a1_h03v06_202308_+2079_-15640
+    uv run python scripts/collect_agent_traces.py --only-id mcd64a1_h03v06_202308_p2079_-15640
     uv run python scripts/collect_agent_traces.py --skip-existing       # default
     uv run python scripts/collect_agent_traces.py --no-skip-existing
     uv run python scripts/collect_agent_traces.py --limit 10

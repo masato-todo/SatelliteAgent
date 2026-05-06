@@ -1,0 +1,500 @@
+"""Multi-turn agent loop for the LFM2.5-VL SFT/GRPO model served by vLLM.
+
+This is the inference-time SSOT for the trained LFM2.5-VL agent (S62-S65).
+
+Tool set (4 tools, matching SFT trajectory format):
+  - compute_index_delta(index="all"): read precomputed spectral binary tags
+  - analyze(evidence, interpretation, recommended_action): commit reasoning
+  - submit_to_ground(reason): terminal — transmit
+  - drop(reason):              terminal — discard
+
+Critical settings (discovered via S62-S64 ablations):
+  - tool_choice="required": grammar-constrained generation, force tool emission
+  - include_images=False:   removing images from the user prompt unblocks
+                            the SFT-trained tool-calling pattern (75% acc vs
+                            51% with images). The model was trained with images
+                            but at inference time vision context dominates and
+                            the agent skips compute_index_delta. Without
+                            images the trained agent flow runs cleanly.
+
+Usage:
+    from agent.lfm2_agent import run_lfm2_agent
+    result = run_lfm2_agent(
+        case_id="mcd64a1_h09v04_202307_p4582_-12035",
+        before_path="/path/to/before.png",
+        after_path="/path/to/after.png",
+        precompute_root="/path/to/precompute_v4",
+        vllm_url="http://localhost:8000/v1",
+        served_model="LFM2.5-VL-450M",
+        include_images=False,  # set True to test image-mode (lower accuracy)
+    )
+    print(result["terminal"])      # "submit_to_ground" or "drop"
+    print(result["tool_call_log"]) # list of {name, args}
+"""
+from __future__ import annotations
+
+import base64
+import json
+import os
+import urllib.request
+import urllib.error
+from typing import Any
+
+import yaml
+
+
+SYS_PROMPT = (
+    "You are an onboard satellite operator agent on Earth-observation duty.\n\n"
+    "You are shown a Sentinel-2 image pair (before / after) of the same location. "
+    "Decide whether to transmit a report to ground (submit_to_ground) or discard the data (drop).\n\n"
+    "Use compute_index_delta() (with no arguments) to get all 6 spectral indices at once. "
+    "Then call analyze() to commit your reasoning, then call submit_to_ground() or drop()."
+)
+
+
+TOOLS = [
+    {"type": "function", "function": {
+        "name": "compute_index_delta",
+        "description": (
+            "Returns spectral delta tags (burn, vegetation, water, built-up, snow) "
+            "for the image pair. Call with no arguments to get all 6 indices."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "index": {
+                    "type": "string",
+                    "enum": ["all", "NBR", "NDVI", "NDWI", "MNDWI", "NDBI", "NDSI"],
+                    "description": "Index name. Default 'all' returns binary tags for all 6.",
+                },
+            },
+            "required": [],
+        },
+    }},
+    {"type": "function", "function": {
+        "name": "analyze",
+        "description": "Commit reasoning before terminal action. Cite spectral evidence.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "evidence":     {"type": "string"},
+                "interpretation": {
+                    "type": "string",
+                    "enum": ["significant_change", "no_significant_change"],
+                },
+                "recommended_action": {
+                    "type": "string",
+                    "enum": ["submit_to_ground", "drop"],
+                },
+            },
+            "required": ["evidence", "interpretation", "recommended_action"],
+        },
+    }},
+    {"type": "function", "function": {
+        "name": "submit_to_ground",
+        "description": "Transmit the report. Use when significant change worth ground attention.",
+        "parameters": {
+            "type": "object",
+            "properties": {"reason": {"type": "string"}},
+            "required": ["reason"],
+        },
+    }},
+    {"type": "function", "function": {
+        "name": "drop",
+        "description": "Discard the data. Use when no significant change.",
+        "parameters": {
+            "type": "object",
+            "properties": {"reason": {"type": "string"}},
+            "required": ["reason"],
+        },
+    }},
+]
+
+
+TERMINAL_TOOLS = frozenset({"submit_to_ground", "drop"})
+
+INDICES = ["NBR", "NDVI", "NDWI", "MNDWI", "NDBI", "NDSI"]
+LEVEL_RANK = {"NONE": 0, "MODERATE": 1, "STRONG": 2}
+
+
+# ---------------------------------------------------------------------------
+# Precompute reading (offline tool implementation)
+# ---------------------------------------------------------------------------
+
+def _level(v):
+    if v is None: return "NONE"
+    if v >= 0.30: return "STRONG"
+    if v >= 0.10: return "MODERATE"
+    return "NONE"
+
+
+def read_compute_index_delta(precompute_root: str, case_id: str, index: str):
+    """Read one index's delta_stats from precompute YAML. Returns dict or None."""
+    path = os.path.join(precompute_root, case_id, "compute_index_delta", f"{index}.stats.yaml")
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        return (data.get("response") or {}).get("delta_stats") or {}
+    except Exception:
+        return None
+
+
+def case_features(precompute_root: str, case_id: str):
+    """Read all 6 indices for a case. Returns dict[index → delta_stats] or None."""
+    deltas = {}
+    for idx in INDICES:
+        d = read_compute_index_delta(precompute_root, case_id, idx)
+        if d is None:
+            return None
+        deltas[idx] = d
+    return deltas
+
+
+# Mirror of build_precompute_v2 — fetch all bands once per side, then
+# compute every index locally with numpy. Cuts SimSat round-trips from
+# 12 (6 indices × 2 sides) to 2.
+_REALTIME_BANDS = ["nir", "red", "green", "swir16", "swir22"]
+_REALTIME_INDEX_DEFS = {
+    "NDVI":  ("nir",    "red"),
+    "NDWI":  ("green",  "nir"),
+    "MNDWI": ("green",  "swir16"),
+    "NBR":   ("nir",    "swir22"),
+    "NDBI":  ("swir16", "nir"),
+    "NDSI":  ("green",  "swir16"),
+}
+
+
+def _stats_of_delta(delta: "np.ndarray") -> dict:
+    """Same shape as precompute_v2: min/max/mean/median + frac_* with ±0.2 cutoff."""
+    import numpy as np
+    finite = delta[np.isfinite(delta)]
+    if finite.size == 0:
+        return {"min": None, "max": None, "mean": None, "median": None,
+                "frac_decrease_strong": 0.0, "frac_increase_strong": 0.0}
+    return {
+        "min":    float(finite.min()),
+        "max":    float(finite.max()),
+        "mean":   float(finite.mean()),
+        "median": float(np.median(finite)),
+        "frac_decrease_strong": float((delta < -0.2).sum() / delta.size),
+        "frac_increase_strong": float((delta >  0.2).sum() / delta.size),
+    }
+
+
+def realtime_case_features(case_meta: dict):
+    """Compute the same 6 indices live via SimSat + numpy.
+
+    One STAC fetch per side (5 bands), then 6 indices computed locally —
+    matches `scripts/build_precompute_v2.py:fetch_both_sides`.
+
+    Returns dict[index → delta_stats] (same shape as `case_features`).
+    """
+    import numpy as np
+    try:
+        from simsat_client.sentinel import fetch_sentinel_array, SimSatError
+    except Exception as e:
+        return {"_error": f"simsat_client import failed: {e}"}
+    lat = float(case_meta["lat"])
+    lon = float(case_meta["lon"])
+    bd  = case_meta["before_date"]
+    ad  = case_meta["after_date"]
+    size_km = float(case_meta.get("size_km", 10.0))
+    base_url = os.environ.get("SIMSAT_API_URL", "http://localhost:9005")
+
+    try:
+        sa_b = fetch_sentinel_array(lat=lat, lon=lon, timestamp=bd,
+                                     bands=_REALTIME_BANDS, size_km=size_km,
+                                     base_url=base_url, resolution_meters=10,
+                                     window_days=30, timeout=120)
+        sa_a = fetch_sentinel_array(lat=lat, lon=lon, timestamp=ad,
+                                     bands=_REALTIME_BANDS, size_km=size_km,
+                                     base_url=base_url, resolution_meters=10,
+                                     window_days=30, timeout=120)
+    except SimSatError as e:
+        return {"_error": f"SimSat fetch failed: {e}"}
+
+    ds_b = {name: sa_b.array[i] for i, name in enumerate(sa_b.band_names)}
+    ds_a = {name: sa_a.array[i] for i, name in enumerate(sa_a.band_names)}
+
+    def _idx(ds: dict, a: str, b: str):
+        a_arr = ds[a].astype(np.float32)
+        b_arr = ds[b].astype(np.float32)
+        denom = a_arr + b_arr
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return np.where(denom > 0, (a_arr - b_arr) / denom, np.nan)
+
+    deltas = {}
+    for idx, (a, b) in _REALTIME_INDEX_DEFS.items():
+        d = _idx(ds_a, a, b) - _idx(ds_b, a, b)
+        # Crop to common shape if SimSat returned slightly different sizes
+        if hasattr(d, "shape") and d.shape != _idx(ds_b, a, b).shape:
+            pass  # already aligned via subtraction; keep
+        deltas[idx] = _stats_of_delta(d)
+    return deltas
+
+
+def tags_of(feats: dict) -> dict[str, str]:
+    """Convert raw spectral deltas to disaster-type binary tags (S50 style)."""
+    nbr   = feats["NBR"]; ndvi  = feats["NDVI"]; ndwi  = feats["NDWI"]
+    mndwi = feats["MNDWI"]; ndbi  = feats["NDBI"]; ndsi  = feats["NDSI"]
+    return {
+        "burn":    _level(nbr.get("frac_decrease_strong")),
+        "veg":     _level(ndvi.get("frac_decrease_strong")),
+        "water":   max(
+            [_level(ndwi.get("frac_decrease_strong")),  _level(ndwi.get("frac_increase_strong")),
+             _level(mndwi.get("frac_decrease_strong")), _level(mndwi.get("frac_increase_strong"))],
+            key=lambda x: LEVEL_RANK[x],
+        ),
+        "builtup": _level(ndbi.get("frac_increase_strong")),
+        "snow":    max(
+            [_level(ndsi.get("frac_decrease_strong")), _level(ndsi.get("frac_increase_strong"))],
+            key=lambda x: LEVEL_RANK[x],
+        ),
+    }
+
+
+def build_observation(feats: dict) -> str:
+    """Tool observation in the EXACT format used during SFT training (S62-S64)."""
+    tags = tags_of(feats)
+    means = {idx: feats[idx].get("mean") or 0.0 for idx in INDICES}
+    return (
+        f"burn_or_biomass_loss: {tags['burn']} (NBR mean={means['NBR']:+.2f})\n"
+        f"vegetation_loss:      {tags['veg']} (NDVI mean={means['NDVI']:+.2f})\n"
+        f"water_change:         {tags['water']} (NDWI mean={means['NDWI']:+.2f}, MNDWI mean={means['MNDWI']:+.2f})\n"
+        f"built_up_change:      {tags['builtup']} (NDBI mean={means['NDBI']:+.2f})\n"
+        f"snow_change:          {tags['snow']} (NDSI mean={means['NDSI']:+.2f})"
+    )
+
+
+def execute_tool(name: str, args: dict, *, case_meta: dict, case_id: str) -> str:
+    """Execute one tool call. Returns observation string for the tool message.
+
+    `case_meta` must carry lat/lon/before_date/after_date/size_km so we can
+    compute spectral deltas live from SimSat (no precompute YAML reads).
+    """
+    if name == "compute_index_delta":
+        feats = realtime_case_features(case_meta)
+        if isinstance(feats, dict) and feats.get("_error"):
+            return f"error: realtime compute failed: {feats['_error']}"
+        which = (args or {}).get("index", "all")
+        if which == "all" or which is None:
+            return build_observation(feats)
+        if which in INDICES:
+            d = feats[which]
+            return (f"{which}: mean={d.get('mean'):+.3f}, "
+                    f"frac_decrease={d.get('frac_decrease_strong'):.3f}, "
+                    f"frac_increase={d.get('frac_increase_strong'):.3f}")
+        return f"error: unknown index {which!r}"
+    if name == "analyze":
+        action = (args or {}).get("recommended_action", "?")
+        return f"noted, call {action}"
+    if name in TERMINAL_TOOLS:
+        return "ok"
+    return f"error: unknown tool {name!r}"
+
+
+# ---------------------------------------------------------------------------
+# Multi-turn agent loop
+# ---------------------------------------------------------------------------
+
+def _b64_image(path: str) -> str:
+    with open(path, "rb") as f:
+        return "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+
+
+def initial_messages(
+    before_path: str | None,
+    after_path: str | None,
+    *,
+    include_images: bool = False,
+) -> list[dict]:
+    """Build initial messages.
+
+    include_images=False (default) — text-only prompt. Reaches 75% accuracy
+        with the SFT-trained model (vs 51% with images). Discovered in S63.
+    include_images=True — original VLM prompt with before/after images.
+    """
+    user_content: list[dict[str, Any]] = []
+    if include_images and before_path and after_path:
+        user_content.extend([
+            {"type": "text",      "text": "Before image (previous pass):"},
+            {"type": "image_url", "image_url": {"url": _b64_image(before_path)}},
+            {"type": "text",      "text": "After image (current pass):"},
+            {"type": "image_url", "image_url": {"url": _b64_image(after_path)}},
+        ])
+    user_content.append({
+        "type": "text",
+        "text": "Investigate with your tools, then decide submit_to_ground or drop.",
+    })
+    return [
+        {"role": "system", "content": SYS_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+
+
+def chat_complete(
+    vllm_url: str,
+    served_model: str,
+    messages: list[dict],
+    *,
+    api_key: str = "dummy",
+    max_tokens: int = 256,
+    temperature: float = 0.0,
+    tool_choice: str = "required",
+    timeout: float = 120.0,
+) -> dict:
+    """Single /chat/completions call. tool_choice='required' is critical
+    (forces vLLM to emit tool_calls — without it, model often answers in text)."""
+    body = {
+        "model": served_model, "messages": messages,
+        "tools": TOOLS, "tool_choice": tool_choice,
+        "max_tokens": max_tokens, "temperature": temperature,
+    }
+    url = vllm_url.rstrip("/") + "/chat/completions"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read())
+
+
+def iter_lfm2_agent(
+    case_id: str,
+    *,
+    case_meta: dict,
+    before_path: str | None = None,
+    after_path: str | None = None,
+    precompute_root: str | None = None,  # accepted but unused (realtime-only)
+    vllm_url: str = "http://localhost:8000/v1",
+    served_model: str = "LFM2.5-VL-450M",
+    api_key: str = "dummy",
+    include_images: bool = False,
+    max_turns: int = 6,
+    temperature: float = 0.0,
+):
+    """Generator version of the multi-turn agent loop.
+
+    Yields events in the same shape as agent/react_loop_openai.py emits,
+    so /api/run_agent's SSE pipeline can stream them directly:
+
+        {"type": "thought", "text": "..."}
+        {"type": "action",  "name": "tool", "arguments": {...}}
+        {"type": "observation", "name": "tool", "result": <parsed>}
+        {"type": "final",   "name": <terminal>, "result": {...}}
+        {"type": "error",   "text": "..."}        # on chat error
+
+    On StopIteration (i.e. when iteration completes normally), returns the
+    same dict shape `run_lfm2_agent` used to produce, so the legacy POST
+    endpoint can keep working unchanged.
+    """
+    messages = initial_messages(before_path, after_path, include_images=include_images)
+    terminal: str | None = None
+    tool_call_log: list[dict] = []
+    raw_log: list[dict] = []
+
+    yield {
+        "type": "thought",
+        "text": f"LFM2.5-VL multi-turn agent · {served_model} · case={case_id}",
+    }
+
+    for turn in range(max_turns):
+        try:
+            resp = chat_complete(
+                vllm_url, served_model, messages,
+                api_key=api_key, temperature=temperature,
+            )
+        except Exception as e:
+            terminal = f"HTTP_ERR_{type(e).__name__}"
+            raw_log.append({"turn": turn, "error": str(e)})
+            yield {"type": "error",
+                   "text": f"chat completion failed at turn {turn}: "
+                           f"{type(e).__name__}: {e}"}
+            break
+
+        msg = resp["choices"][0]["message"]
+        tcs = msg.get("tool_calls") or []
+        content = msg.get("content")
+        finish = resp["choices"][0].get("finish_reason")
+        raw_log.append({
+            "turn": turn,
+            "finish": finish,
+            "content": content,
+            "n_tool_calls": len(tcs),
+        })
+
+        if not tcs:
+            # Model answered in plain text — treat as drop.
+            terminal = "drop"
+            break
+
+        # Append assistant turn so model sees its own tool_calls
+        messages.append({
+            "role": "assistant",
+            "content": content or "",
+            "tool_calls": tcs,
+        })
+
+        tc = tcs[0]
+        fn = tc.get("function", {})
+        fname = fn.get("name")
+        try:
+            fargs = json.loads(fn.get("arguments") or "{}")
+        except Exception:
+            fargs = {}
+        tool_call_log.append({"name": fname, "args": fargs})
+
+        # Emit action event the moment the model commits to a tool call,
+        # before we execute the tool. This is what makes the UI feel live.
+        yield {"type": "action", "name": fname, "arguments": fargs}
+
+        if fname in TERMINAL_TOOLS:
+            terminal = fname
+            break
+
+        # Execute tool, append observation (realtime SimSat-backed)
+        obs = execute_tool(fname, fargs, case_meta=case_meta, case_id=case_id)
+        messages.append({
+            "role": "tool",
+            "tool_call_id": tc.get("id", f"t{turn}"),
+            "name": fname,
+            "content": str(obs),
+        })
+        try:
+            parsed = json.loads(obs) if isinstance(obs, str) else obs
+        except Exception:
+            parsed = obs
+        yield {"type": "observation", "name": fname, "result": parsed}
+
+    if terminal is None:
+        terminal = "max_turns_exceeded"
+
+    yield {
+        "type": "final",
+        "name": terminal,
+        "result": {"raw_log": raw_log, "scene_id": case_id},
+    }
+    return {
+        "terminal":      terminal,
+        "tool_call_log": tool_call_log,
+        "raw_log":       raw_log,
+        "messages":      messages,
+    }
+
+
+def run_lfm2_agent(*args, **kwargs) -> dict:
+    """Backward-compat wrapper: drains iter_lfm2_agent and returns the
+    same dict shape that pre-streaming callers (POST /api/run_lfm2_agent,
+    eval scripts) expect."""
+    gen = iter_lfm2_agent(*args, **kwargs)
+    try:
+        while True:
+            next(gen)
+    except StopIteration as stop:
+        return stop.value or {
+            "terminal": "max_turns_exceeded",
+            "tool_call_log": [], "raw_log": [], "messages": [],
+        }

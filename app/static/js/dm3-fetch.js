@@ -15,10 +15,17 @@ export async function loadDM3Cases() {
     sel.innerHTML = '<option value="">— none —</option>';
 
     const cases = data.cases || [];
-    const negativeCases = cases.filter(c => c.is_negative);
-    const catalogCases  = cases.filter(c => c.source === "MCD64A1");
-    const preciseCases  = cases.filter(c => c.precise && !c.is_negative && c.source !== "MCD64A1");
-    const coarseCases   = cases.filter(c => !c.precise && !c.is_negative && c.source !== "MCD64A1");
+    const fireedgeCases      = cases.filter(c => c.source === "FireEdge_HF");
+    const hardNegCases       = cases.filter(c => c.is_hard_negative);
+    const negativeCases      = cases.filter(c => c.is_negative && !c.is_hard_negative && c.source !== "FireEdge_HF");
+    const volcanicCases      = cases.filter(c => c.source === "GDACS_VO");
+    const deforestationCases = cases.filter(c => c.source === "PRODES");
+    const habCases           = cases.filter(c => c.source === "HAB");
+    const emsCases           = cases.filter(c => c.source === "EMS");
+    const catalogCases       = cases.filter(c => c.source === "MCD64A1");
+    const otherSrc = c => !["MCD64A1","EMS","GDACS_VO","PRODES","HAB","HARD_NEG","FireEdge_HF"].includes(c.source);
+    const preciseCases  = cases.filter(c => c.precise && !c.is_negative && otherSrc(c));
+    const coarseCases   = cases.filter(c => !c.precise && !c.is_negative && otherSrc(c));
 
     const makeOption = (c, i) => {
       const opt = document.createElement("option");
@@ -53,11 +60,47 @@ export async function loadDM3Cases() {
       catalogCases.forEach(c => grpM.appendChild(makeOption(c, cases.indexOf(c))));
       sel.appendChild(grpM);
     }
+    if (emsCases.length) {
+      const grpE = document.createElement("optgroup");
+      grpE.label = "🌊 EMS — Copernicus rapid mapping (flood / storm / quake / landslide)";
+      emsCases.forEach(c => grpE.appendChild(makeOption(c, cases.indexOf(c))));
+      sel.appendChild(grpE);
+    }
+    if (volcanicCases.length) {
+      const grpV = document.createElement("optgroup");
+      grpV.label = "🌋 Volcanic — GDACS eruption events (lava / ash, SWIR signal)";
+      volcanicCases.forEach(c => grpV.appendChild(makeOption(c, cases.indexOf(c))));
+      sel.appendChild(grpV);
+    }
+    if (deforestationCases.length) {
+      const grpD = document.createElement("optgroup");
+      grpD.label = "🌳 Deforestation — PRODES Amazon clearings (NDVI / NBR drop)";
+      deforestationCases.forEach(c => grpD.appendChild(makeOption(c, cases.indexOf(c))));
+      sel.appendChild(grpD);
+    }
+    if (fireedgeCases.length) {
+      const grpFE = document.createElement("optgroup");
+      grpFE.label = "🔥 FireEdge GT — YujiYamaguchi/fireedge-sentinel2-wildfire (HF, 300 cases)";
+      fireedgeCases.forEach(c => grpFE.appendChild(makeOption(c, cases.indexOf(c))));
+      sel.appendChild(grpFE);
+    }
+    if (habCases.length) {
+      const grpH = document.createElement("optgroup");
+      grpH.label = "🟢 Algal bloom — harmful algal blooms / red tide (NDCI, RGB color)";
+      habCases.forEach(c => grpH.appendChild(makeOption(c, cases.indexOf(c))));
+      sel.appendChild(grpH);
+    }
     if (negativeCases.length) {
       const grpN = document.createElement("optgroup");
       grpN.label = "⊘ NEGATIVE — drop expected (no_change / cloud_blocked / random)";
       negativeCases.forEach(c => grpN.appendChild(makeOption(c, cases.indexOf(c))));
       sel.appendChild(grpN);
+    }
+    if (hardNegCases.length) {
+      const grpHN = document.createElement("optgroup");
+      grpHN.label = "🛑 HARD NEGATIVE — drop at positive sites in stable years (forest/volcano/pre-burn)";
+      hardNegCases.forEach(c => grpHN.appendChild(makeOption(c, cases.indexOf(c))));
+      sel.appendChild(grpHN);
     }
   } catch (e) {
     console.error("DM3 load failed", e);
@@ -107,8 +150,25 @@ export function onDM3Change() {
     const lbl = $("size_km_val");
     if (lbl) lbl.textContent = c.size_km;
   }
+  if (c.window_days) {
+    // Cases that pin a precise S2 frame (e.g. FireEdge_HF carries
+    // sentinel_datetime + window_days=1) need their window propagated
+    // to the form so Fetch Images hits the exact same item.
+    const wd = $("window_days");
+    if (wd) {
+      wd.value = c.window_days;
+      const lbl2 = $("window_days_val");
+      if (lbl2) lbl2.textContent = c.window_days;
+    }
+  }
   state.template = c.id;
   updateCachePairWidget(c);
+
+  // FireEdge cases pin a precise STAC item via sentinel_datetime — expose
+  // a dedicated fetch button for them so users don't have to know about
+  // the window=1 + ISO-timestamp trick.
+  const feBtn = $("fetch-fireedge-btn");
+  if (feBtn) feBtn.style.display = (c.source === "FireEdge_HF") ? "" : "none";
 
   const lines = [];
   const precisionTag = c.precise
@@ -155,8 +215,23 @@ export async function loadTemplates() {
   $("simsat-url").textContent = data.simsat_url;
   const p = data.provider || { kind: "none", model: "?" };
   const el = $("provider-info");
-  el.textContent = p.kind === "gemini" ? `Gemini · ${p.model}` : "NO PROVIDER (set GOOGLE_API_KEY)";
-  el.className = p.kind === "gemini" ? "provider-gemini" : "provider-stub";
+  // Header reflects the resolved default provider (Settings dropdown can override).
+  // - gemini: needs GOOGLE_API_KEY at startup, or it surfaces as kind="none"
+  // - openai_compat: any local vLLM (e.g. lfm25_vl_local @ :8002)
+  // - lfm2_multiturn: trained 450M-sft-grpo via vLLM (:8086) — uses lfm2_agent loop
+  if (p.kind === "gemini") {
+    el.textContent = `Gemini · ${p.model}`;
+    el.className = "provider-gemini";
+  } else if (p.kind === "openai_compat") {
+    el.textContent = `${p.name || "vLLM"} · ${p.model}`;
+    el.className = "provider-vllm";
+  } else if (p.kind === "lfm2_multiturn") {
+    el.textContent = `${p.name || "lfm2_multiturn"} · ${p.model}`;
+    el.className = "provider-vllm";
+  } else {
+    el.textContent = "NO PROVIDER (check config/providers.yaml or .env)";
+    el.className = "provider-stub";
+  }
 }
 
 // ---- Fetch images ----
@@ -197,6 +272,8 @@ function setLoading(which, opts = {}) {
 function setFetching(isFetching) {
   $("fetch-btn").disabled = isFetching;
   $("run-btn").disabled = isFetching;
+  const fe = $("fetch-fireedge-btn");
+  if (fe) fe.disabled = isFetching;
 }
 
 export async function saveCurrentPair() {
@@ -262,16 +339,8 @@ export function useCachedPair() {
   fetchImages();
 }
 
-export async function fetchImages() {
-  const payload = {
-    lat:  parseFloat($("lat").value),
-    lon:  parseFloat($("lon").value),
-    before_date: $("before_date").value,
-    after_date:  $("after_date").value,
-    size_km:     parseFloat($("size_km").value),
-    window_days: parseInt($("window_days").value, 10),
-  };
-  setStatus(`Fetching...  lat=${payload.lat}, lon=${payload.lon}, size=${payload.size_km}km`);
+async function _fetchImagesWithPayload(payload, statusPrefix) {
+  setStatus(`${statusPrefix}  lat=${payload.lat}, lon=${payload.lon}, size=${payload.size_km}km`);
   setLoading("before", { loading: true });
   setLoading("after",  { loading: true });
   setFetching(true);
@@ -316,6 +385,45 @@ export async function fetchImages() {
   } finally {
     setFetching(false);
   }
+}
+
+export async function fetchImages() {
+  const payload = {
+    lat:  parseFloat($("lat").value),
+    lon:  parseFloat($("lon").value),
+    before_date: $("before_date").value,
+    after_date:  $("after_date").value,
+    size_km:     parseFloat($("size_km").value),
+    window_days: parseInt($("window_days").value, 10),
+  };
+  await _fetchImagesWithPayload(payload, "Fetching...");
+}
+
+// FireEdge cases pin a specific S2 STAC item by sentinel_datetime (full ISO).
+// Sending that timestamp + window_days=1 forces SimSat to return the exact
+// frame the wildfire LoRA was trained on. Mirrors the production-conditions
+// eval at scripts/eval_wildfire_hf_simsat.py --use-sentinel-datetime.
+export async function fetchImagesFireEdge() {
+  const c = state.dm3;
+  if (!c || c.source !== "FireEdge_HF") {
+    setStatus("Select a FireEdge GT case first.");
+    return;
+  }
+  const sdt = c.sentinel_datetime;
+  if (!sdt) {
+    setStatus("This FireEdge case has no sentinel_datetime — cannot pin training frame.");
+    return;
+  }
+  const payload = {
+    lat:  parseFloat($("lat").value),
+    lon:  parseFloat($("lon").value),
+    before_date: $("before_date").value,
+    after_date:  sdt,    // full ISO → SimSat returns the exact training STAC item
+    size_km:     parseFloat($("size_km").value),
+    window_days:        1,    // After: tight window pins the training STAC item
+    before_window_days: 30,   // Before: standard wide search so sdt-180d finds a real S2 capture
+  };
+  await _fetchImagesWithPayload(payload, `Fetching FireEdge frame (After=${sdt} ±1d, Before=${$("before_date").value} ±30d)...`);
 }
 
 // ---- Find clearer Before / After candidates ----

@@ -6,6 +6,31 @@ const STORAGE_KEY = "satagent.vlm";
 export function openSettings()  { const m = $("settings-modal"); if (m) m.hidden = false; }
 export function closeSettings() { const m = $("settings-modal"); if (m) m.hidden = true; }
 
+// Header badge rendering. Owns the source-of-truth: whatever is currently in
+// state.vlmProvider/state.vlmModel is what Run Agent / classify_change will
+// use. We re-render this on every Settings change so the header is a live
+// preview, not a stale snapshot of the server-resolved default.
+function renderProviderBadge(cfg) {
+  const el = $("provider-info");
+  if (!el) return;
+  const kind  = (cfg && cfg.kind)  || "none";
+  const name  = (cfg && cfg.name)  || "?";
+  const model = state.vlmModel || (cfg && cfg.default_model) || "?";
+  if (kind === "gemini") {
+    el.textContent = `Gemini · ${model}`;
+    el.className   = "provider-gemini";
+  } else if (kind === "openai_compat") {
+    el.textContent = `${name} · ${model}`;
+    el.className   = "provider-vllm";
+  } else if (kind === "lfm2_multiturn") {
+    el.textContent = `${name} · ${model}`;
+    el.className   = "provider-vllm";
+  } else {
+    el.textContent = "NO PROVIDER (check config/providers.yaml or .env)";
+    el.className   = "provider-stub";
+  }
+}
+
 export async function initProviders() {
   const sel = $("vlm-provider"); const mod = $("vlm-model");
   if (!sel || !mod) return;
@@ -45,11 +70,20 @@ export async function initProviders() {
   populateModels(sel, mod, saved.model);
 
   sel.addEventListener("change", () => populateModels(sel, mod, null));
-  mod.addEventListener("change", () => persist());
+  mod.addEventListener("change", () => { persist(); renderFromSelection(sel); });
 
   state.vlmProvider = sel.value;
   state.vlmModel    = mod.value;
   persist();
+  renderFromSelection(sel);
+}
+
+function renderFromSelection(sel) {
+  const opt = sel.selectedOptions[0];
+  if (!opt) return;
+  let cfg = {};
+  try { cfg = JSON.parse(opt.dataset.cfg || "{}"); } catch (e) { /* */ }
+  renderProviderBadge(cfg);
 }
 
 function populateModels(sel, mod, preferModel) {
@@ -68,6 +102,7 @@ function populateModels(sel, mod, preferModel) {
   state.vlmProvider = sel.value;
   state.vlmModel    = mod.value;
   persist();
+  renderProviderBadge(cfg);
 }
 
 function persist() {

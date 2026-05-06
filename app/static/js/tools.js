@@ -57,6 +57,13 @@ export function obsTopSignal(toolName, result) {
     if (c) return `${c.name || "?"} ${((c.confidence || 0) * 100).toFixed(0)}%`;
     return "no class";
   }
+  if (toolName === "detect_wildfire") {
+    const fc = (result.fire_confidence ?? 0) * 100;
+    const sev = result.severity || "?";
+    const fire = result.fire_detected ? "🔥 FIRE" : "no fire";
+    const smoke = result.smoke_detected ? " · smoke" : "";
+    return `${fire} ${fc.toFixed(0)}% · ${sev}${smoke}`;
+  }
   if (toolName === "compute_index_delta") {
     const s = result.stats || {};
     const dec = s.frac_decrease_strong;

@@ -1,0 +1,2 @@
+# Per-experiment staging dirs (regenerable from data/ via ./upload.sh)
+exp*/stage/

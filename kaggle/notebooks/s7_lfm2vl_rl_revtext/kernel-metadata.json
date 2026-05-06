@@ -1,0 +1,21 @@
+{
+  "id": "<KAGGLE_USER>/prime-rl-s7-lfm2vl-rl-revtext",
+  "title": "prime-rl-s7-lfm2vl-rl-revtext",
+  "code_file": "prime-rl-s7-lfm2vl-rl-revtext.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "accelerator": "NvidiaRtxPro6000",
+  "enable_tpu": false,
+  "enable_internet": false,
+  "keywords": [],
+  "dataset_sources": [],
+  "kernel_sources": [
+    "<KAGGLE_USER>/prime-rl-offline-prep"
+  ],
+  "competition_sources": [
+    "nvidia-nemotron-model-reasoning-challenge"
+  ],
+  "model_sources": []
+}

@@ -1,0 +1,21 @@
+{
+  "id": "<KAGGLE_USER>/prime-rl-s6-lfm2vl-pipeline",
+  "title": "prime-rl-s6-lfm2vl-pipeline",
+  "code_file": "prime-rl-s6-lfm2vl-pipeline.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "accelerator": "NvidiaRtxPro6000",
+  "enable_tpu": false,
+  "enable_internet": false,
+  "keywords": [],
+  "dataset_sources": [],
+  "kernel_sources": [
+    "<KAGGLE_USER>/prime-rl-offline-prep"
+  ],
+  "competition_sources": [
+    "nvidia-nemotron-model-reasoning-challenge"
+  ],
+  "model_sources": []
+}

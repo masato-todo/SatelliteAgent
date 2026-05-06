@@ -211,7 +211,7 @@ uv run python scripts/collect_agent_traces.py --only-id <id>    # 単発
 `data/traces/agent/<scene_id>__YYYYMMDDTHHMMSSZ.yaml`:
 ```yaml
 metadata:
-  scene_id: mcd64a1_h03v06_202308_+2079_-15640
+  scene_id: mcd64a1_h03v06_202308_p2079_-15640
   scenario_type: positive          # positive | negative
   expected_action: submit_to_ground
   expected_class: fire

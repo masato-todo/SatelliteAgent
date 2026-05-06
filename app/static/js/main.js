@@ -3,8 +3,8 @@
 import { state, $, setStatus, updateBudget, BUDGET_MAX } from "./state-utils.js";
 import { initMaps, setImage, setMapLabel, resetMapsToOriginal,
          loadDamageOverlay, clearDamageOverlay, toggleDrawMode, clearDrawnBbox } from "./maps.js";
-import { loadDM3Cases, onDM3Change, loadTemplates, fetchImages, useCachedPair,
-         saveCurrentPair, searchBeforeCandidates, searchAfterCandidates,
+import { loadDM3Cases, onDM3Change, loadTemplates, fetchImages, fetchImagesFireEdge,
+         useCachedPair, saveCurrentPair, searchBeforeCandidates, searchAfterCandidates,
          geocodeSearch } from "./dm3-fetch.js";
 import { runTool, setToolsStatus } from "./tools.js";
 import { initProviders, openSettings, closeSettings } from "./providers.js";
@@ -46,6 +46,9 @@ function runAgent() {
   if (state.vlmProvider)  qp.set("provider", state.vlmProvider);
   if (state.vlmModel)     qp.set("model",    state.vlmModel);
   if (state.dm3 && state.dm3.id) qp.set("scene_id", state.dm3.id);
+  const instrEl = $("agent-instructions");
+  const instructions = instrEl ? (instrEl.value || "").trim() : "";
+  if (instructions) qp.set("instructions", instructions);
   const url = `/api/run_agent?${qp.toString()}`;
   const es = new EventSource(url);
   state.eventSource = es;
@@ -91,6 +94,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   initMaps();
 
   $("fetch-btn").addEventListener("click", fetchImages);
+  $("fetch-fireedge-btn").addEventListener("click", fetchImagesFireEdge);
   $("save-pair-btn").addEventListener("click", saveCurrentPair);
   $("cache-use-btn").addEventListener("click", useCachedPair);
   $("trace-clear-btn").addEventListener("click", () => {
