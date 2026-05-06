@@ -29,8 +29,29 @@ env/
 # Local SFT scratch (kept out of git; see train/README.md if you want to revive)
 train/
 
-# Data — never tracked. Bootstrap via rsync (see docs/REMOTE_DEPLOY.md).
-data/
+# Data — selectively tracked.
+# Curated metadata + small artifacts ARE committed (see data/README.md):
+#   data/metadata/disaster_m3/*.yaml   case catalogues (lat/lon/dates only)
+#   data/gt_polygons/                  xBD / MCD64A1 / PRODES polygons
+#   data/scene_catalog.yaml            MCD64A1 wildfire catalog
+#   data/canonical_dataset.yaml        saved Before/After pair definitions
+#   data/eval_hf{,_simsat}.jsonl       baseline eval results
+# The heavy / re-derivable / per-user content below is kept out of git:
+data/scenarios/
+data/precompute/
+data/curated_pairs/
+data/derived/
+data/raw_mcd64a1/
+data/wildfire_composites/
+data/traces/
+# Heavy CSVs in metadata (xBD buildings ~180MB, image_metadata ~2.5MB)
+data/metadata/**/*.csv
+# Local debug eval runs (canonical baselines listed above stay tracked)
+data/eval_hf_simsat_vllm_merged.jsonl
+data/eval_hf_train.jsonl
+data/eval_hf_val.jsonl
+data/eval_firms.jsonl
+data/eval_wildfire.jsonl
 
 # Models
 models/*

@@ -1,52 +1,95 @@
 # SatelliteAgent
 
-オンボード LFM2-VL エージェントが ReAct ループで衛星ダウンリンク帯域を最適化する。
-設計詳細は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 参照。
+オンボード LFM2-VL エージェントが ReAct ループで衛星ダウンリンク帯域を最適化する PoC。
+1084 件の DisasterM3 / FireEdge GT に対して 3 種類の VLM (Gemini / 局所 vLLM 1.6B / 学習済 LFM2.5-VL-450M-sft-grpo)
+を切替えて走らせ、Before/After Sentinel-2 frame の change classification → submit_to_ground / drop を判定する。
 
-## Quickstart (ローカル)
+設計詳細は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、再現手順の全体ロードマップは [docs/REPRO_PLAN.md](docs/REPRO_PLAN.md) 参照。
+
+---
+
+## 必要なもの
+
+- Linux (動作確認は Ubuntu 24.04 / aarch64 GB10)
+- Python 3.10+ (`uv` 推奨。`pip install uv` で入る)
+- Docker (SimSat と LFM サービスをコンテナで起動するため)
+- GPU (LFM 推論サーバを動かす場合のみ。Gemini path だけなら不要)
+
+## クローン直後のセットアップ
 
 ```bash
-uv sync --extra simsat
-cp .env.example .env       # GOOGLE_API_KEY を設定
+git clone https://github.com/masato-todo/SatelliteAgent.git
+cd SatelliteAgent
+uv sync --extra simsat --extra geo
+```
 
-# SimSat 起動 (別シェル)
-cd SimSat && docker compose up -d --build sim
+これでアプリ本体の Python 環境ができる。`data/` 以下は metadata 一式 (~6MB)
+が同梱済みなので追加ダウンロード不要。
 
-# SatelliteAgent 起動
+## 必要な 3 サービス
+
+| サーバ | port | 役割 | 起動方法 |
+|---|---:|---|---|
+| **SimSat** | 9005 | Sentinel-2 mock backend (lat/lon/timestamp → S2 image) | `cd vendor/SimSat && docker compose up -d sim` (パッチ適用要、`docs/REPRO_PLAN.md` Phase 3.3) |
+| **wildfire LoRA** | 8085 | `detect_wildfire` ツールが叩く FireEdge LoRA (transformers + peft) | `cd serve_lfm && docker compose up -d` |
+| **LFM2 agent vLLM** | 8086 | 学習済 LFM2.5-VL-450M-sft-grpo (Run Agent の "lfm25_vl_sft_grpo" provider) | `MODEL_PATH=/path/to/checkpoint scripts/serve_vllm_lfm2.sh` |
+
+(局所 vLLM 1.6B を Run Agent 既定 provider で使う場合は port 8002 にも別途立てる。
+詳細は `docs/INTEGRATION_LFM2VL.md`。学習済 GRPO model だけ使うなら不要。)
+
+## アプリ起動
+
+```bash
 uv run python -m app.server
 ```
 
-ブラウザで http://localhost:7860 → DM3 96 ケース (xBD 80 + negative 16) から Before/After を選んで `Run Agent`。
+ブラウザで <http://localhost:7860> を開く。
 
-## Quickstart (リモート GPU サーバ)
+## ブラウザ操作 (動作確認の最短手順)
 
-[docs/REMOTE_DEPLOY.md](docs/REMOTE_DEPLOY.md) 参照。
-ローカルからは `ssh -L 7860:localhost:7860 user@gpu-host` でトンネル → http://localhost:7860 でブラウザアクセス。
+1. 左サイドバー **DisasterM3 case** ドロップダウンから例えば 🔥 FireEdge GT 内の `fireedge_train_firms_pos_001` を選択
+2. **🔥 Fetch FireEdge frame** をクリック (= sentinel_datetime + window=1d で訓練時の S2 frame をピン)
+3. After map に画像が表示されたら `detect_wildfire 🔥` ツールボタン → fire_detected: true が返れば成功
+4. 上部 ⚙ Settings で provider を `lfm25_vl_sft_grpo` に切替 → **Run Agent** で multi-turn agent が逐次 SSE で trace を出力
 
-## データ
+## 環境変数 (任意)
 
-`data/` は git 管理外。bootstrap (DM3 metadata 配布、cache prewarm 等) は [docs/REMOTE_DEPLOY.md](docs/REMOTE_DEPLOY.md) の手順に従う。
+通常は不要。以下は使うシナリオがある時だけ `.env` に書く:
+
+```bash
+# Settings ⚙ で Gemini を選ぶ場合のみ
+GOOGLE_API_KEY=...
+
+# scripts/collect_firms_fire.py で FIRMS データを再収集する場合のみ
+FIRMS_MAP_KEY=...
+
+# SimSat がリモートにある場合のみ (デフォルト http://localhost:9005)
+SIMSAT_API_URL=http://...
+```
 
 ## ディレクトリ構成
 
 ```
-app/
-  ├─ server.py        FastAPI: /api/fetch, /api/run_agent (SSE), /api/disasterm3/cases ...
-  └─ static/
-      ├─ index.html
-      ├─ app.css
-      └─ js/          ES modules (state-utils, maps, tools, dm3-fetch, annotate-traces, main)
-agent/                Orchestrator (ReAct loop, LLM providers)
-tools/                ツール層 (vision / context / budget / action / quality)
-simsat_client/        SimSat API wrapper
-scripts/
-  ├─ prewarm_cache.py    DM3 96 ケースを 50km/10m で pre-fetch
-  ├─ collect_negatives.py STAC 経由で negative シナリオ収集
-  └─ sync_cache.sh       ローカル → リモート rsync
-data/                 (gitignore) scenarios/, metadata/, traces/, region_db/
-eval/                 評価ハーネス
-models/               (gitignore) FT adapter
+app/                    FastAPI バックエンド + ES module フロント
+  ├─ server.py          /api/fetch, /api/run_agent (SSE) ...
+  └─ static/            index.html + app.css + js/
+agent/                  ReAct ループ実装
+  ├─ react_loop_openai.py  OpenAI 互換 (Gemini, 局所 vLLM 1.6B 共用)
+  ├─ react_loop.py         google-genai SDK 経由の Gemini 経路
+  ├─ lfm2_agent.py         学習済 LFM2.5-VL-450M-sft-grpo 用 multi-turn loop
+  └─ lfm2_tool_parser.py   pythonic tool parser plugin (vLLM 用)
+tools/                  Vision / spectral / region / wildfire / ...
+simsat_client/          SimSat API wrapper
+config/providers.yaml   VLM provider catalog (UI Settings dropdown が読む)
+serve_lfm/              wildfire LoRA serve コンテナ (transformers+peft, port 8085)
+scripts/                データ収集 / 評価 / Docker 起動補助
+data/                   selectively tracked — see [data/README.md](data/README.md)
 docs/
+  ├─ REPRO_PLAN.md      再現性整備のフェーズ別計画
+  ├─ ARCHITECTURE.md
+  ├─ INTEGRATION_LFM2VL.md   vLLM cu130 + transformers 5.5.0 + sed patch
+  └─ DATASET_V3.md
+patches/simsat/         SimSat fork へのローカルパッチ (タイル境界 mosaic 対応 ほか)
 ```
 
 ## License
