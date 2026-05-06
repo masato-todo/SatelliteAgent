@@ -29,56 +29,6 @@ function stopAgent() {
   setRunButton(false);
 }
 
-async function runLfm2Agent() {
-  const sceneId = state.dm3 ? state.dm3.id : null;
-  if (!sceneId) {
-    setStatus("Pick a DM3 case first (LFM2 agent reads precomputed tools by case_id)");
-    return;
-  }
-  const btn = $("run-lfm2-btn");
-  const orig = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = "Running…";
-  setStatus(`LFM2 agent: ${sceneId} (no streaming, ~30-60s)`);
-  try {
-    const r = await fetch("/api/run_lfm2_agent", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({scene_id: sceneId, include_images: false}),
-    });
-    if (!r.ok) {
-      setStatus(`HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);
-      return;
-    }
-    const data = await r.json();
-    clearTrace();
-    renderTraceEvent({type: "thought",
-      text: `LFM2.5-VL agent · ${data.served_model || "?"} · include_images=${data.include_images}`});
-    const obs = data.observations || [];
-    let obsIdx = 0;
-    for (const tc of data.tool_call_log || []) {
-      renderTraceEvent({type: "action",  name: tc.name, arguments: tc.args || {}});
-      // Terminal tools (submit_to_ground / drop) have no observation.
-      // Non-terminal tool_calls get the next observation in order.
-      if (tc.name !== "submit_to_ground" && tc.name !== "drop" && obsIdx < obs.length) {
-        const o = obs[obsIdx++];
-        let parsed = o.content;
-        try { parsed = JSON.parse(o.content); } catch (_) { /* keep string */ }
-        renderTraceEvent({type: "observation", name: o.name, result: parsed});
-      }
-    }
-    renderTraceEvent({type: "final", name: data.terminal,
-      result: {raw_log: data.raw_log, scene_id: data.scene_id}});
-    setStatus(`LFM2 agent → terminal=${data.terminal}, ${(data.tool_call_log || []).length} tool calls`);
-  } catch (e) {
-    setStatus(`LFM2 agent error: ${e}`);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = orig;
-  }
-}
-
-
 function runAgent() {
   if (state.eventSource) { stopAgent(); return; }   // toggle: button now acts as Stop
   if (!state.beforeKey || !state.afterKey) {
@@ -155,7 +105,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   $("settings-close-btn").addEventListener("click", closeSettings);
   $("settings-modal").querySelector(".modal-backdrop").addEventListener("click", closeSettings);
   $("run-btn").addEventListener("click", runAgent);
-  $("run-lfm2-btn").addEventListener("click", runLfm2Agent);
   $("annotate-btn").addEventListener("click", toggleRecording);
   $("traces-list-btn").addEventListener("click", openTracesModal);
   $("traces-close-btn").addEventListener("click", closeTracesModal);

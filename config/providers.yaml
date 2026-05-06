@@ -38,3 +38,17 @@ providers:
     models:
       - gemini-2.5-flash
       - gemini-2.5-pro
+
+  # Trained LFM2.5-VL-450M-sft-grpo S64 checkpoint, served by vLLM with the
+  # custom lfm2_pythonic tool parser. This provider goes through the
+  # multi-turn agent loop (agent/lfm2_agent.py) instead of the OpenAI-compat
+  # ReAct loop, since the model emits Python-style [func(arg=...)] tool
+  # calls rather than OpenAI tool_calls JSON.
+  # Requires a DM3 case to be selected (the agent fetches case_meta from
+  # the DM3 catalog, not from the generic Before/After cache).
+  - name: lfm25_vl_sft_grpo
+    kind: lfm2_multiturn
+    base_url: http://127.0.0.1:8086/v1
+    default_model: LFM2.5-VL-450M-sft-grpo
+    models:
+      - LFM2.5-VL-450M-sft-grpo
