@@ -32,8 +32,9 @@
       <select id="vlm-model"></select>
     </label>
     <p class="hint" style="opacity:0.7; font-size:12px; margin-top:8px;">
-      Used by <code>classify_change (VLM)</code> and Run Agent. Selection is saved per-browser.
-      Default: local vLLM serving LFM2.5-VL on <code>127.0.0.1:8000</code>.
+      Used by <code>classify_change (VLM)</code> and Run Agent. Selection auto-saves per-browser
+      (no Apply needed; Close just dismisses the modal). The actual base_url
+      of each entry is set in <code>config/providers.yaml</code>.
     </p>
     <div class="modal-buttons">
       <button id="settings-close-btn">Close</button>
@@ -295,6 +296,6 @@
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script type="module" src="/static/js/main.js?v=2026050605"></script>
+<script type="module" src="/static/js/main.js?v=2026050606"></script>
 </body>
 </html>
