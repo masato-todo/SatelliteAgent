@@ -84,11 +84,12 @@
 
     <label>
       Search window: <span id="window_days_val">30</span> days
-      <input id="window_days" type="range" min="7" max="90" step="1" value="30">
+      <input id="window_days" type="range" min="1" max="90" step="1" value="30">
     </label>
 
     <div class="buttons">
       <button id="fetch-btn">Fetch Images</button>
+      <button id="fetch-fireedge-btn" style="display:none;" title="Pin the exact Sentinel-2 frame the FireEdge LoRA was trained on: sends sentinel_datetime as the After timestamp with window=1d.">🔥 Fetch FireEdge frame</button>
       <button id="save-pair-btn" title="Persist the currently displayed Before/After as the canonical pair for this scene">Save Before/After</button>
       <select id="cache-pair-select" style="display:none;"></select>
       <button id="cache-use-btn" style="display:none;">Use cache</button>
@@ -289,6 +290,6 @@
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script type="module" src="/static/js/main.js?v=2026042610"></script>
+<script type="module" src="/static/js/main.js?v=2026050603"></script>
 </body>
 </html>

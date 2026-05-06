@@ -134,12 +134,22 @@ def build_tool_registry(before_path: str, after_path: str,
     reg["capture_crop"] = make_capture_crop(before_path, after_path)
     reg["classify_change"] = _make_classify_change(before_path, after_path, provider_name, model)
     if context:
-        reg["fetch_band"]          = make_fetch_band(**context)
-        reg["false_color"]         = make_false_color(**context)
-        reg["compute_index"]       = make_compute_index(**context)
-        reg["compute_index_delta"] = make_compute_index_delta(**context)
-        reg["get_change_stats"]    = make_get_change_stats(**context)
-        reg["detect_wildfire"]     = make_detect_wildfire(**context)
+        # Other factories use the user-requested ts (legacy semantics).
+        spectral_ctx = {k: v for k, v in context.items()
+                        if k not in ("before_actual_dt", "after_actual_dt")}
+        reg["fetch_band"]          = make_fetch_band(**spectral_ctx)
+        reg["false_color"]         = make_false_color(**spectral_ctx)
+        reg["compute_index"]       = make_compute_index(**spectral_ctx)
+        reg["compute_index_delta"] = make_compute_index_delta(**spectral_ctx)
+        reg["get_change_stats"]    = make_get_change_stats(**spectral_ctx)
+        # detect_wildfire pins the *actual* SimSat-returned STAC item (= the
+        # scene the user sees on the map) so the LFM input matches what eval
+        # at scripts/eval_wildfire_hf_simsat.py --use-sentinel-datetime sends.
+        reg["detect_wildfire"] = make_detect_wildfire(
+            lat=context["lat"], lon=context["lon"], size_km=context["size_km"],
+            before_ts=context.get("before_actual_dt") or context["before_ts"],
+            after_ts=context.get("after_actual_dt")  or context["after_ts"],
+        )
     return reg
 
 
@@ -276,6 +286,11 @@ def _context_from_keys(before_key: str, after_key: str) -> dict[str, Any] | None
     Tool factories need these to bind fresh SimSat calls (fetch_band, false_color,
     compute_index). We prefer the stored `request` block; fall back to footprint
     center + image datetime when the sidecar predates the request-params change.
+
+    Also returns `before_actual_dt`/`after_actual_dt` — the SimSat-returned STAC
+    item datetimes — so detect_wildfire can pin the *exact same* scene the user
+    sees on the map (request.ts vs SimSat-picked item can differ; see
+    eval_wildfire_hf_simsat.py for why this matters for matching the LoRA).
     """
     bm = _load_meta(before_key) or {}
     am = _load_meta(after_key)  or {}
@@ -302,6 +317,8 @@ def _context_from_keys(before_key: str, after_key: str) -> dict[str, Any] | None
         "lat": float(lat), "lon": float(lon),
         "size_km": float(size_km),
         "before_ts": ts_b, "after_ts": ts_a,
+        "before_actual_dt": bm.get("datetime") or ts_b,
+        "after_actual_dt":  am.get("datetime") or ts_a,
     }
 
 
@@ -312,6 +329,10 @@ class FetchRequest(BaseModel):
     after_date: str
     size_km: float = Field(default=10.0, ge=1, le=100)
     window_days: int = Field(default=30, ge=1, le=180)
+    # Optional per-side override. Used by the FireEdge fetch path: tight
+    # window=1 on After (pin the training STAC item via sentinel_datetime),
+    # wider window on Before so sdt-180d can fall on a real S2 capture.
+    before_window_days: int | None = Field(default=None, ge=1, le=180)
     # Default to native 10m so the cached pair matches the GRPO training env.
     # Cold fetch at 50km/10m takes ~30-60s; subsequent calls hit the cache.
     resolution_meters: int = Field(default=10, ge=10, le=120)
@@ -815,7 +836,62 @@ def _load_hard_negative_cases() -> list[dict[str, Any]]:
     return out
 
 
-DM3_CASES: list[dict[str, Any]] = _load_dm3_cases() + _load_negative_cases() + _load_hard_negative_cases() + _load_ems_cases() + _load_volcanic_cases() + _load_deforestation_cases() + _load_algal_bloom_cases()
+def _load_fireedge_hf_cases() -> list[dict[str, Any]]:
+    """Load YujiYamaguchi/fireedge-sentinel2-wildfire HF dataset cases.
+    Each case carries `sentinel_datetime` so a window=1 SimSat fetch
+    reproduces the exact training-time S2 frame the LoRA saw.
+    """
+    path = APP_DIR.parent / "data" / "metadata" / "disaster_m3" / "fireedge_hf_cases.yaml"
+    if not path.exists():
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+    except Exception as e:
+        print(f"[startup] WARN: failed to load fireedge_hf_cases.yaml: {e}")
+        return []
+    raw_cases = doc.get("cases", []) if isinstance(doc, dict) else []
+    out: list[dict[str, Any]] = []
+    for r in raw_cases:
+        try:
+            lat = float(r["lat"]); lon = float(r["lon"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        size_km = float(r.get("size_km", 5.0))
+        before_date = r["before_date"]
+        after_date  = r["after_date"]
+        label_str   = r.get("label") or r.get("event_type") or "no_change"
+        is_fire     = label_str == "fire"
+        out.append({
+            "id":              r["id"],
+            "source":          "FireEdge_HF",
+            "event":           r["id"],
+            "disaster_type":   "fire" if is_fire else "no_change",
+            "mapped_class":    "fire" if is_fire else "no_change",
+            "expected_action": "submit_to_ground" if is_fire else "drop",
+            "split":           r.get("fireedge_split"),
+            "fireedge_source": r.get("fireedge_source"),
+            "sentinel_datetime": r.get("sentinel_datetime"),
+            "query_date":      r.get("query_date"),
+            "capture_date":    after_date,
+            "after_date":      after_date,
+            "before_date":     before_date,
+            "lat": lat, "lon": lon,
+            "location":        f"FireEdge {r.get('fireedge_split')}/{r.get('fireedge_source')}",
+            "image":           "",
+            "size_km":         size_km,
+            "window_days":     int(r.get("window_days", 1)),
+            "precise":         False,
+            "is_fireedge":     True,
+            # Negatives carry is_negative so the existing scorer picks up
+            # 'drop' as expected action; positives stay positive (= submit).
+            "is_negative":     not is_fire,
+            "negative_type":   None if is_fire else r.get("fireedge_source"),
+        })
+    return out
+
+
+DM3_CASES: list[dict[str, Any]] = _load_dm3_cases() + _load_negative_cases() + _load_hard_negative_cases() + _load_ems_cases() + _load_volcanic_cases() + _load_deforestation_cases() + _load_algal_bloom_cases() + _load_fireedge_hf_cases()
 _n_pos = sum(1 for c in DM3_CASES if not any(c.get(f) for f in ("is_negative","is_ems","is_volcanic","is_deforestation","is_algal_bloom")))
 _n_neg     = sum(1 for c in DM3_CASES if c.get("is_negative") and not c.get("is_hard_negative"))
 _n_hardneg = sum(1 for c in DM3_CASES if c.get("is_hard_negative"))
@@ -823,7 +899,8 @@ _n_ems = sum(1 for c in DM3_CASES if c.get("is_ems"))
 _n_vol = sum(1 for c in DM3_CASES if c.get("is_volcanic"))
 _n_def = sum(1 for c in DM3_CASES if c.get("is_deforestation"))
 _n_hab = sum(1 for c in DM3_CASES if c.get("is_algal_bloom"))
-print(f"[startup] DisasterM3 cases loaded: {len(DM3_CASES)} (positive/neutral={_n_pos}, negative={_n_neg}, hard_negative={_n_hardneg}, ems={_n_ems}, volcanic={_n_vol}, deforestation={_n_def}, hab={_n_hab})")
+_n_fe  = sum(1 for c in DM3_CASES if c.get("is_fireedge"))
+print(f"[startup] DisasterM3 cases loaded: {len(DM3_CASES)} (positive/neutral={_n_pos}, negative={_n_neg}, hard_negative={_n_hardneg}, ems={_n_ems}, volcanic={_n_vol}, deforestation={_n_def}, hab={_n_hab}, fireedge={_n_fe})")
 
 
 def _load_scene_catalog() -> list[dict[str, Any]]:
@@ -1216,8 +1293,9 @@ def api_geocode(q: str) -> dict[str, Any]:
 
 @app.post("/api/fetch")
 def api_fetch(req: FetchRequest) -> dict[str, Any]:
+    before_window = req.before_window_days if req.before_window_days is not None else req.window_days
     b_key, b_meta = _fetch_one(req.lat, req.lon, req.before_date, req.size_km,
-                                req.window_days, req.resolution_meters)
+                                before_window, req.resolution_meters)
     a_key, a_meta = _fetch_one(req.lat, req.lon, req.after_date,  req.size_km,
                                 req.window_days, req.resolution_meters)
     return {

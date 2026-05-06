@@ -137,9 +137,27 @@ def analyze(
     }
 
 
+def detect_wildfire(which: str = "after") -> dict[str, Any]:
+    """STUB: single-image wildfire detection. The real impl
+    (tools.wildfire.make_detect_wildfire) is bound per-request when a
+    SimSat context is available. Without context this stub just signals
+    that the tool exists in the registry."""
+    return {
+        "fire_detected": False,
+        "fire_confidence": 0.0,
+        "smoke_detected": False,
+        "smoke_confidence": 0.0,
+        "severity": "NONE",
+        "description": "stub (no SimSat context)",
+        "classes": [{"name": "no_change", "confidence": 0.5}],
+        "bboxes": [],
+    }
+
+
 STUB_TOOLS: dict[str, Callable[..., Any]] = {
     "classify_change": classify_change,
     "fetch_band": fetch_band,
+    "detect_wildfire": detect_wildfire,
     "zoom_in": zoom_in,
     "get_region_info": get_region_info,
     "get_history": get_history,

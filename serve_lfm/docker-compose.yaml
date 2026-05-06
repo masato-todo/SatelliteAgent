@@ -1,0 +1,40 @@
+# LFM2.5-VL-450M + wildfire LoRA — OpenAI-compatible server.
+# Bind:  http://localhost:8085  (matches existing config/providers.yaml lfm25_vl_local)
+# GPU:   shares the same GPU as vllm-qwen36-35b. The wildfire LoRA model is
+#        ~1 GB FP16, so 1-2 GB of VRAM is plenty.
+#
+# Usage:
+#   cd serve_lfm
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# Volume layout (host paths from the SatelliteAgent repo root):
+#   $REPO/../llama.cpp/models/LFM2.5-VL-450M-Wildfire-staging/{base,adapter}
+#                                  → mapped under /models inside the container
+#   ~/.cache/huggingface → /cache/huggingface (download cache passthrough)
+
+services:
+  lfm-wildfire:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lfm-wildfire:latest
+    container_name: lfm-wildfire
+    restart: unless-stopped
+    ports:
+      - "8085:8000"
+    environment:
+      LFM_BASE_DIR:    /models/base
+      LFM_ADAPTER_DIR: /models/adapter
+      LFM_MODEL_NAME:  lfm2.5-vl-450m-wildfire
+      LFM_DEVICE:      cuda
+    volumes:
+      - /home/ai-tech/work/llama.cpp/models/LFM2.5-VL-450M-Wildfire-staging:/models:ro
+      - /home/ai-tech/.cache/huggingface:/cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
