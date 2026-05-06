@@ -21,17 +21,23 @@
 git clone https://github.com/masato-todo/SatelliteAgent.git
 cd SatelliteAgent
 
-WITH_SIMSAT=1 ./setup.sh          # uv sync, optional SimSat clone+patch+up
-./scripts/download_models.sh      # ~2.7 GB pull from HF Hub
-docker compose up -d              # GPU services on :8085 (wildfire) and :8086 (agent)
-uv run python -m app.server       # the app on :7860
+WITH_SIMSAT=1 ./setup.sh          # 1. install Python deps + (Optional) SimSat at :9005
+./scripts/download_models.sh      # 2. pull ~2.7 GB of weights from HF Hub
+docker compose up -d              # 3. wildfire LoRA :8085 + LFM2 agent vLLM :8086
+./scripts/smoke_test.sh           # 4. self-check (boots app + verifies one full path)
+uv run python -m app.server       # 5. start the app for real
 ```
 
-Then open <http://localhost:7860>. Verify the wiring with:
+Open <http://localhost:7860>.
 
-```bash
-./scripts/smoke_test.sh           # end-to-end invariant check (fetch + detect_wildfire)
-```
+各スクリプトの役割:
+
+| スクリプト | 何をするか | いつ使うか |
+|---|---|---|
+| `setup.sh` | `uv sync`、`.env` 雛形、`WITH_SIMSAT=1` なら SimSat fork を `vendor/SimSat` に clone + `patches/simsat/*.patch` 適用 + `docker compose up sim` | **clone 直後の 1 回** (べき等なので再実行 OK) |
+| `scripts/download_models.sh` | LFM2.5-VL-450M ベース + wildfire LoRA + 学習済 sft-grpo の 3 repo を `./models/` に DL | **clone 直後の 1 回** (重複 DL は HF 側で skip) |
+| `scripts/smoke_test.sh` | アプリを bg で立ち上げて FireEdge fire case を fetch → `detect_wildfire` 呼び出し → `sentinel_datetime` 一致 + `fire_detected=true` を assert → アプリ kill。**起動用ではなく検証用** | **セットアップ後の動作確認**、コード変更後の regression check、CI |
+| `uv run python -m app.server` | アプリ本体起動 (foreground) | 普段使い |
 
 ## 必要な 3 サービス
 
