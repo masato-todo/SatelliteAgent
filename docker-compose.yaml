@@ -42,7 +42,7 @@
 services:
   lfm-wildfire:
     build:
-      context: ./serve_lfm
+      context: ./services/wildfire
       dockerfile: Dockerfile
     image: satelliteagent/wildfire:latest
     container_name: lfm-wildfire
@@ -68,7 +68,7 @@ services:
   lfm2-agent:
     build:
       context: .
-      dockerfile: serve_lfm2/Dockerfile
+      dockerfile: services/agent/Dockerfile
     image: satelliteagent/lfm2-agent:cu130
     container_name: lfm2-agent
     restart: unless-stopped

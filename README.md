@@ -45,7 +45,7 @@ docker compose up -d              # build + 起動 (~5 分)
 docker compose logs -f lfm2-agent # vLLM の load 完了待ち
 ```
 
-詳細は `docker-compose.yaml` 上部のコメントと `serve_lfm2/Dockerfile`、`docs/INTEGRATION_LFM2VL.md` 参照。
+詳細は `docker-compose.yaml` 上部のコメントと `services/agent/Dockerfile`、`docs/INTEGRATION_LFM2VL.md` 参照。
 
 (任意: Settings ⚙ で **Gemini を使う場合は `GOOGLE_API_KEY` を `.env` に**。
 ローカル vLLM 1.6B も別途使いたい場合は port 8002 に立てる、これは `config/providers.yaml` の `lfm25_vl_local` 既定エントリ。)
@@ -94,7 +94,9 @@ agent/                  ReAct ループ実装
 tools/                  Vision / spectral / region / wildfire / ...
 simsat_client/          SimSat API wrapper
 config/providers.yaml   VLM provider catalog (UI Settings dropdown が読む)
-serve_lfm/              wildfire LoRA serve コンテナ (transformers+peft, port 8085)
+services/
+  ├─ wildfire/          wildfire LoRA serve コンテナ (transformers+peft, port 8085)
+  └─ agent/             LFM2.5-VL-450M-sft-grpo serve コンテナ (vLLM, port 8086)
 scripts/                データ収集 / 評価 / Docker 起動補助
 data/                   selectively tracked — see [data/README.md](data/README.md)
 docs/
