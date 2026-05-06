@@ -1,0 +1,2356 @@
+created_at: '2026-04-30T14:33:09.960316+00:00'
+n_cases: 117
+cases:
+- id: ems_EMSR872
+  ems_code: EMSR872
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Tropical Cyclone Sinlaku in Micronesia
+  countries:
+  - Micronesia
+  lat: 7.3758
+  lon: 151.7507
+  size_km: 10.0
+  before_date: '2026-01-08'
+  after_date: '2026-04-22'
+  window_days: 30
+  event_time: '2026-04-08T22:00:00+00:00'
+  n_aois: 19
+  n_products: 18
+  closed: false
+  gdacs_id: TC1001270
+- id: ems_EMSR871
+  ems_code: EMSR871
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Abruzzo, Molise and Basilicata regions, Italy
+  countries:
+  - Italy
+  lat: 41.8996
+  lon: 14.9388
+  size_km: 10.0
+  before_date: '2025-12-31'
+  after_date: '2026-04-14'
+  window_days: 30
+  event_time: '2026-03-31T15:00:00+00:00'
+  n_aois: 6
+  n_products: 15
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR870
+  ems_code: EMSR870
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Ecuador
+  countries:
+  - Ecuador
+  lat: -1.2907
+  lon: -79.6685
+  size_km: 10.0
+  before_date: '2025-12-02'
+  after_date: '2026-03-16'
+  window_days: 30
+  event_time: '2026-03-02T23:00:00+00:00'
+  n_aois: 13
+  n_products: 16
+  closed: true
+  gdacs_id: FL1103761
+- id: ems_EMSR868
+  ems_code: EMSR868
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Evros River basin, Greece
+  countries:
+  - Greece
+  lat: 41.1527
+  lon: 26.3011
+  size_km: 10.0
+  before_date: '2025-11-20'
+  after_date: '2026-03-04'
+  window_days: 30
+  event_time: '2026-02-18T22:00:00+00:00'
+  n_aois: 2
+  n_products: 9
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR867
+  ems_code: EMSR867
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Tropical Cyclone GEZANI-26 in Madagascar
+  countries:
+  - Madagascar
+  lat: -17.9738
+  lon: 48.9175
+  size_km: 10.0
+  before_date: '2025-11-12'
+  after_date: '2026-02-24'
+  window_days: 30
+  event_time: '2026-02-10T15:00:00+00:00'
+  n_aois: 8
+  n_products: 11
+  closed: true
+  gdacs_id: TC1001256
+- id: ems_EMSR866
+  ems_code: EMSR866
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in New Aquitaine, France
+  countries:
+  - France
+  lat: 45.2655
+  lon: -0.6741
+  size_km: 10.0
+  before_date: '2025-11-14'
+  after_date: '2026-02-26'
+  window_days: 30
+  event_time: '2026-02-12T11:00:00+00:00'
+  n_aois: 7
+  n_products: 14
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR865
+  ems_code: EMSR865
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Cordoba, Colombia
+  countries:
+  - Colombia
+  lat: 8.8067
+  lon: -75.9179
+  size_km: 10.0
+  before_date: '2025-10-28'
+  after_date: '2026-02-09'
+  window_days: 30
+  event_time: '2026-01-26T05:30:00+00:00'
+  n_aois: 1
+  n_products: 3
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR864
+  ems_code: EMSR864
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Portugal and Spain
+  countries:
+  - Portugal
+  lat: 39.488
+  lon: -8.5898
+  size_km: 10.0
+  before_date: '2025-11-05'
+  after_date: '2026-02-17'
+  window_days: 30
+  event_time: '2026-02-03T00:00:00+00:00'
+  n_aois: 25
+  n_products: 54
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR863
+  ems_code: EMSR863
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Tropical Cyclone FYTIA in  Madagascar
+  countries:
+  - Madagascar
+  lat: -18.1287
+  lon: 47.6528
+  size_km: 10.0
+  before_date: '2025-11-01'
+  after_date: '2026-02-13'
+  window_days: 30
+  event_time: '2026-01-30T23:00:00+00:00'
+  n_aois: 6
+  n_products: 6
+  closed: true
+  gdacs_id: TC1001254
+- id: ems_EMSR861
+  ems_code: EMSR861
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Storm Kristin and Flooding in Central Portugal, Galicia and Andalusia, Spain
+  countries:
+  - Spain
+  - Portugal
+  lat: 37.519
+  lon: -4.3387
+  size_km: 10.0
+  before_date: '2025-10-30'
+  after_date: '2026-02-11'
+  window_days: 30
+  event_time: '2026-01-28T04:00:00+00:00'
+  n_aois: 33
+  n_products: 82
+  closed: true
+  gdacs_id: FL1103727
+- id: ems_EMSR860
+  ems_code: EMSR860
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Storm in Leinster Province, Ireland
+  countries:
+  - Ireland
+  lat: 52.4562
+  lon: -6.52
+  size_km: 10.0
+  before_date: '2025-10-29'
+  after_date: '2026-02-10'
+  window_days: 30
+  event_time: '2026-01-27T00:00:00+00:00'
+  n_aois: 2
+  n_products: 6
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR858
+  ems_code: EMSR858
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in  Southern Italy
+  countries:
+  - Italy
+  lat: 38.3676
+  lon: 13.3604
+  size_km: 10.0
+  before_date: '2025-10-22'
+  after_date: '2026-02-03'
+  window_days: 30
+  event_time: '2026-01-20T00:00:00+00:00'
+  n_aois: 14
+  n_products: 21
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR857
+  ems_code: EMSR857
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in  Mozambique and South Africa
+  countries:
+  - Mozambique
+  - South Africa
+  lat: -25.6676
+  lon: 32.53
+  size_km: 10.0
+  before_date: '2025-10-12'
+  after_date: '2026-01-24'
+  window_days: 30
+  event_time: '2026-01-10T23:00:00+00:00'
+  n_aois: 17
+  n_products: 43
+  closed: true
+  gdacs_id: FL1103694
+- id: ems_EMSR856
+  ems_code: EMSR856
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in  Albania and Montenegro
+  countries:
+  - Albania
+  - Montenegro
+  lat: 41.5528
+  lon: 19.4783
+  size_km: 10.0
+  before_date: '2025-10-08'
+  after_date: '2026-01-20'
+  window_days: 30
+  event_time: '2026-01-06T19:00:00+00:00'
+  n_aois: 13
+  n_products: 19
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR855
+  ems_code: EMSR855
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in  Italy
+  countries:
+  - Italy
+  lat: 41.9322
+  lon: 12.6663
+  size_km: 10.0
+  before_date: '2025-10-08'
+  after_date: '2026-01-20'
+  window_days: 30
+  event_time: '2026-01-06T12:00:00+00:00'
+  n_aois: 1
+  n_products: 2
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR854
+  ems_code: EMSR854
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Bosnia and Herzegovina
+  countries:
+  - Bosnia and Herzegovina
+  lat: 43.5297
+  lon: 18.1743
+  size_km: 10.0
+  before_date: '2025-10-08'
+  after_date: '2026-01-20'
+  window_days: 30
+  event_time: '2026-01-06T15:45:00+00:00'
+  n_aois: 2
+  n_products: 3
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR853
+  ems_code: EMSR853
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in  Bolivia
+  countries:
+  - Bolivia
+  lat: -17.2571
+  lon: -63.5206
+  size_km: 10.0
+  before_date: '2025-09-14'
+  after_date: '2025-12-27'
+  window_days: 30
+  event_time: '2025-12-13T23:00:00+00:00'
+  n_aois: 8
+  n_products: 16
+  closed: true
+  gdacs_id: FL1103664
+- id: ems_EMSR851
+  ems_code: EMSR851
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in  Sri Lanka
+  countries:
+  - Sri Lanka
+  lat: 7.5226
+  lon: 80.4374
+  size_km: 10.0
+  before_date: '2025-09-01'
+  after_date: '2025-12-14'
+  window_days: 30
+  event_time: '2025-11-30T23:00:00+00:00'
+  n_aois: 21
+  n_products: 28
+  closed: true
+  gdacs_id: FL1103640
+- id: ems_EMSR850
+  ems_code: EMSR850
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in  Albania
+  countries:
+  - Albania
+  lat: 40.1381
+  lon: 20.1228
+  size_km: 10.0
+  before_date: '2025-08-20'
+  after_date: '2025-12-02'
+  window_days: 30
+  event_time: '2025-11-18T23:00:00+00:00'
+  n_aois: 8
+  n_products: 10
+  closed: true
+  gdacs_id: FL1103616
+- id: ems_EMSR849
+  ems_code: EMSR849
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Storm Claudia in Ireland
+  countries:
+  - Ireland
+  lat: 53.21
+  lon: -6.62
+  size_km: 10.0
+  before_date: '2025-08-16'
+  after_date: '2025-11-28'
+  window_days: 30
+  event_time: '2025-11-14T12:00:00+00:00'
+  n_aois: 4
+  n_products: 15
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR848
+  ems_code: EMSR848
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in central Viet Nam
+  countries:
+  - Viet Nam
+  lat: 15.6528
+  lon: 108.1775
+  size_km: 10.0
+  before_date: '2025-07-31'
+  after_date: '2025-11-12'
+  window_days: 30
+  event_time: '2025-10-29T13:00:00+00:00'
+  n_aois: 19
+  n_products: 41
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR847
+  ems_code: EMSR847
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Tropical Cyclone Melissa in the Caribbean
+  countries:
+  - Haiti
+  - Cuba
+  - Jamaica
+  lat: 17.9815
+  lon: -76.7303
+  size_km: 10.0
+  before_date: '2025-07-28'
+  after_date: '2025-11-09'
+  window_days: 30
+  event_time: '2025-10-26T12:00:00+00:00'
+  n_aois: 39
+  n_products: 67
+  closed: true
+  gdacs_id: TC1001230
+- id: ems_EMSR846
+  ems_code: EMSR846
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in  Panama
+  countries:
+  - Panama
+  lat: 8.7037
+  lon: -82.4602
+  size_km: 10.0
+  before_date: '2025-07-16'
+  after_date: '2025-10-28'
+  window_days: 30
+  event_time: '2025-10-14T22:00:00+00:00'
+  n_aois: 1
+  n_products: 1
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR845
+  ems_code: EMSR845
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Mexico
+  countries:
+  - Mexico
+  lat: 20.6539
+  lon: -97.5626
+  size_km: 10.0
+  before_date: '2025-07-14'
+  after_date: '2025-10-26'
+  window_days: 30
+  event_time: '2025-10-12T16:00:00+00:00'
+  n_aois: 6
+  n_products: 9
+  closed: true
+  gdacs_id: FL1103425
+- id: ems_EMSR844
+  ems_code: EMSR844
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Viet Nam
+  countries:
+  - Viet Nam
+  lat: 21.1999
+  lon: 106.1286
+  size_km: 10.0
+  before_date: '2025-07-10'
+  after_date: '2025-10-22'
+  window_days: 30
+  event_time: '2025-10-08T03:00:00+00:00'
+  n_aois: 1
+  n_products: 4
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR843
+  ems_code: EMSR843
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Italy
+  countries:
+  - Italy
+  lat: 45.6256
+  lon: 9.1422
+  size_km: 10.0
+  before_date: '2025-06-24'
+  after_date: '2025-10-06'
+  window_days: 30
+  event_time: '2025-09-22T05:00:00+00:00'
+  n_aois: 2
+  n_products: 3
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR841
+  ems_code: EMSR841
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Vasternorrland County, Sweden
+  countries:
+  - Sweden
+  lat: 63.47
+  lon: 17.93
+  size_km: 10.0
+  before_date: '2025-06-08'
+  after_date: '2025-09-20'
+  window_days: 30
+  event_time: '2025-09-06T18:00:00+00:00'
+  n_aois: 2
+  n_products: 5
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR839
+  ems_code: EMSR839
+  source: EMS
+  category: Earthquake
+  event_type: earthquake
+  expected_action: submit_to_ground
+  name: Earthquake in Afghanistan
+  countries:
+  - Afghanistan
+  lat: 34.57
+  lon: 70.59
+  size_km: 10.0
+  before_date: '2025-06-02'
+  after_date: '2025-09-14'
+  window_days: 30
+  event_time: '2025-08-31T19:17:00+00:00'
+  n_aois: 13
+  n_products: 27
+  closed: true
+  gdacs_id: EQ1498339
+- id: ems_EMSR838
+  ems_code: EMSR838
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Pakistan
+  countries:
+  - Pakistan
+  lat: 28.9312
+  lon: 70.6091
+  size_km: 10.0
+  before_date: '2025-05-31'
+  after_date: '2025-09-12'
+  window_days: 30
+  event_time: '2025-08-29T12:00:00+00:00'
+  n_aois: 11
+  n_products: 25
+  closed: true
+  gdacs_id: FL1103435
+- id: ems_EMSR814
+  ems_code: EMSR814
+  source: EMS
+  category: Earthquake
+  event_type: earthquake
+  expected_action: submit_to_ground
+  name: Earthquake in Guatemala
+  countries:
+  - Guatemala
+  lat: 14.5486
+  lon: -90.7334
+  size_km: 10.0
+  before_date: '2025-04-09'
+  after_date: '2025-07-22'
+  window_days: 30
+  event_time: '2025-07-08T21:41:00+00:00'
+  n_aois: 15
+  n_products: 29
+  closed: true
+  gdacs_id: EQ1489306
+- id: ems_EMSR813
+  ems_code: EMSR813
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Ecuador
+  countries:
+  - Ecuador
+  lat: -3.9972
+  lon: -78.8673
+  size_km: 10.0
+  before_date: '2025-04-04'
+  after_date: '2025-07-17'
+  window_days: 30
+  event_time: '2025-07-03T02:00:00+00:00'
+  n_aois: 2
+  n_products: 1
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR808
+  ems_code: EMSR808
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Storm in Gironde Coast, France
+  countries:
+  - France
+  lat: 44.3568
+  lon: -1.1778
+  size_km: 10.0
+  before_date: '2025-03-26'
+  after_date: '2025-07-08'
+  window_days: 30
+  event_time: '2025-06-24T22:00:00+00:00'
+  n_aois: 10
+  n_products: 10
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR805
+  ems_code: EMSR805
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Tropical Cyclone ERICK-25 in Mexico
+  countries:
+  - Mexico
+  lat: 16.681
+  lon: -99.1183
+  size_km: 10.0
+  before_date: '2025-03-21'
+  after_date: '2025-07-03'
+  window_days: 30
+  event_time: '2025-06-19T12:00:00+00:00'
+  n_aois: 7
+  n_products: 7
+  closed: true
+  gdacs_id: TC1001168
+- id: ems_EMSR802
+  ems_code: EMSR802
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Romania
+  countries:
+  - Romania
+  lat: 45.7686
+  lon: 25.9294
+  size_km: 10.0
+  before_date: '2025-02-25'
+  after_date: '2025-06-09'
+  window_days: 30
+  event_time: '2025-05-26T10:00:00+00:00'
+  n_aois: 3
+  n_products: 3
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR800
+  ems_code: EMSR800
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Lombardy - Italy
+  countries:
+  - Italy
+  lat: 45.1177
+  lon: 9.1352
+  size_km: 10.0
+  before_date: '2025-01-17'
+  after_date: '2025-05-01'
+  window_days: 30
+  event_time: '2025-04-17T00:00:00+00:00'
+  n_aois: 2
+  n_products: 2
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR799
+  ems_code: EMSR799
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Bolivia
+  countries:
+  - Bolivia
+  lat: -18.3311
+  lon: -66.6777
+  size_km: 10.0
+  before_date: '2025-01-04'
+  after_date: '2025-04-18'
+  window_days: 30
+  event_time: '2025-04-04T00:00:00+00:00'
+  n_aois: 4
+  n_products: 8
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR798
+  ems_code: EMSR798
+  source: EMS
+  category: Earthquake
+  event_type: earthquake
+  expected_action: submit_to_ground
+  name: Earthquakes in Myanmar
+  countries:
+  - Myanmar
+  lat: 21.6083
+  lon: 95.9194
+  size_km: 10.0
+  before_date: '2024-12-28'
+  after_date: '2025-04-11'
+  window_days: 30
+  event_time: '2025-03-28T08:00:00+00:00'
+  n_aois: 57
+  n_products: 93
+  closed: true
+  gdacs_id: EQ1474477
+- id: ems_EMSR797
+  ems_code: EMSR797
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in northern Bosnia-Herzegovina
+  countries:
+  - Bosnia and Herzegovina
+  lat: 44.6248
+  lon: 17.591
+  size_km: 10.0
+  before_date: '2024-12-27'
+  after_date: '2025-04-10'
+  window_days: 30
+  event_time: '2025-03-27T18:00:00+00:00'
+  n_aois: 3
+  n_products: 6
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR796
+  ems_code: EMSR796
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood In Ecuador
+  countries:
+  - Ecuador
+  lat: -0.3654
+  lon: -79.5725
+  size_km: 10.0
+  before_date: '2024-11-28'
+  after_date: '2025-03-12'
+  window_days: 30
+  event_time: '2025-02-26T13:58:00+00:00'
+  n_aois: 7
+  n_products: 17
+  closed: true
+  gdacs_id: TC1001154
+- id: ems_EMSR795
+  ems_code: EMSR795
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Italy
+  countries:
+  - Italy
+  lat: 42.4657
+  lon: 12.1213
+  size_km: 10.0
+  before_date: '2024-12-14'
+  after_date: '2025-03-28'
+  window_days: 30
+  event_time: '2025-03-14T12:00:00+00:00'
+  n_aois: 8
+  n_products: 7
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR794
+  ems_code: EMSR794
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Madrid, Toledo and Guadalajara Provinces, Spain
+  countries:
+  - Spain
+  lat: 40.4251
+  lon: -4.0688
+  size_km: 10.0
+  before_date: '2024-12-08'
+  after_date: '2025-03-22'
+  window_days: 30
+  event_time: '2025-03-08T12:00:00+00:00'
+  n_aois: 3
+  n_products: 6
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR793
+  ems_code: EMSR793
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Tropical Cyclone JUDE in Mozambique
+  countries:
+  - Mozambique
+  lat: -15.1031
+  lon: 40.3714
+  size_km: 10.0
+  before_date: '2024-12-10'
+  after_date: '2025-03-24'
+  window_days: 30
+  event_time: '2025-03-10T01:00:00+00:00'
+  n_aois: 2
+  n_products: 4
+  closed: true
+  gdacs_id: TC1001154
+- id: ems_EMSR792
+  ems_code: EMSR792
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Valencia, Spain
+  countries:
+  - Spain
+  lat: 39.7149
+  lon: -0.5072
+  size_km: 10.0
+  before_date: '2024-12-05'
+  after_date: '2025-03-19'
+  window_days: 30
+  event_time: '2025-03-05T12:00:00+00:00'
+  n_aois: 2
+  n_products: 7
+  closed: true
+  gdacs_id: FL1103145
+- id: ems_EMSR790
+  ems_code: EMSR790
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Storm in La Reunion, France
+  countries:
+  - France
+  lat: -21.1281
+  lon: 55.518
+  size_km: 10.0
+  before_date: '2024-11-29'
+  after_date: '2025-03-13'
+  window_days: 30
+  event_time: '2025-02-27T19:00:00+00:00'
+  n_aois: 3
+  n_products: 3
+  closed: true
+  gdacs_id: TC1001151
+- id: ems_EMSR789
+  ems_code: EMSR789
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Ecuador
+  countries:
+  - Ecuador
+  lat: -1.0858
+  lon: -80.206
+  size_km: 10.0
+  before_date: '2024-11-28'
+  after_date: '2025-03-12'
+  window_days: 30
+  event_time: '2025-02-26T15:58:00+00:00'
+  n_aois: 5
+  n_products: 16
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR788
+  ems_code: EMSR788
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Ille-et-Vilaine, France
+  countries:
+  - France
+  lat: 47.9617
+  lon: -1.7586
+  size_km: 10.0
+  before_date: '2024-11-01'
+  after_date: '2025-02-13'
+  window_days: 30
+  event_time: '2025-01-30T00:00:00+00:00'
+  n_aois: 6
+  n_products: 24
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR787
+  ems_code: EMSR787
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Storm in United Kingdom
+  countries:
+  - United Kingdom
+  lat: 55.4627
+  lon: -4.6312
+  size_km: 10.0
+  before_date: '2024-10-26'
+  after_date: '2025-02-07'
+  window_days: 30
+  event_time: '2025-01-24T10:00:00+00:00'
+  n_aois: 2
+  n_products: 2
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR786
+  ems_code: EMSR786
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Storm in Ireland
+  countries:
+  - Ireland
+  lat: 53.2573
+  lon: -8.8061
+  size_km: 10.0
+  before_date: '2024-10-26'
+  after_date: '2025-02-07'
+  window_days: 30
+  event_time: '2025-01-24T01:00:00+00:00'
+  n_aois: 8
+  n_products: 8
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR783
+  ems_code: EMSR783
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Scotland, United Kingdom
+  countries:
+  - United Kingdom
+  lat: 57.1336
+  lon: -3.9225
+  size_km: 10.0
+  before_date: '2024-10-01'
+  after_date: '2025-01-13'
+  window_days: 30
+  event_time: '2024-12-30T18:18:00+00:00'
+  n_aois: 4
+  n_products: 6
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR782
+  ems_code: EMSR782
+  source: EMS
+  category: Earthquake
+  event_type: earthquake
+  expected_action: submit_to_ground
+  name: Earthquake in Vanuatu
+  countries:
+  - Vanuatu
+  lat: -17.7399
+  lon: 168.3169
+  size_km: 10.0
+  before_date: '2024-09-18'
+  after_date: '2024-12-31'
+  window_days: 30
+  event_time: '2024-12-17T02:00:00+00:00'
+  n_aois: 5
+  n_products: 3
+  closed: true
+  gdacs_id: EQ1458084
+- id: ems_EMSR781
+  ems_code: EMSR781
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Tropical Cyclone CHIDO in Mozambique
+  countries:
+  - Mozambique
+  lat: -13.3324
+  lon: 40.1275
+  size_km: 10.0
+  before_date: '2024-09-16'
+  after_date: '2024-12-29'
+  window_days: 30
+  event_time: '2024-12-15T02:00:00+00:00'
+  n_aois: 9
+  n_products: 9
+  closed: true
+  gdacs_id: TC1001131
+- id: ems_EMSR780
+  ems_code: EMSR780
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Tropical Cyclone CHIDO in Mayotte, France
+  countries:
+  - France
+  lat: -12.7866
+  lon: 45.1436
+  size_km: 10.0
+  before_date: '2024-09-15'
+  after_date: '2024-12-28'
+  window_days: 30
+  event_time: '2024-12-14T02:00:00+00:00'
+  n_aois: 8
+  n_products: 8
+  closed: true
+  gdacs_id: TC1001131
+- id: ems_EMSR779
+  ems_code: EMSR779
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Cameroon
+  countries:
+  - Cameroon
+  lat: 10.7942
+  lon: 14.5674
+  size_km: 10.0
+  before_date: '2024-08-23'
+  after_date: '2024-12-05'
+  window_days: 30
+  event_time: '2024-11-21T00:00:00+00:00'
+  n_aois: 4
+  n_products: 4
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR778
+  ems_code: EMSR778
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Tropical Storm Sara in Honduras
+  countries:
+  - Honduras
+  lat: 15.7352
+  lon: -86.6663
+  size_km: 10.0
+  before_date: '2024-08-18'
+  after_date: '2024-11-30'
+  window_days: 30
+  event_time: '2024-11-16T23:30:00+00:00'
+  n_aois: 12
+  n_products: 12
+  closed: true
+  gdacs_id: TC1001127
+- id: ems_EMSR777
+  ems_code: EMSR777
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Tropical Storm Sara in Belize
+  countries:
+  - Belize
+  lat: 17.5671
+  lon: -88.5199
+  size_km: 10.0
+  before_date: '2024-08-17'
+  after_date: '2024-11-29'
+  window_days: 30
+  event_time: '2024-11-15T03:00:00+00:00'
+  n_aois: 5
+  n_products: 7
+  closed: true
+  gdacs_id: TC1001127
+- id: ems_EMSR776
+  ems_code: EMSR776
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Panama
+  countries:
+  - Panama
+  lat: 7.7367
+  lon: -80.62
+  size_km: 10.0
+  before_date: '2024-08-06'
+  after_date: '2024-11-18'
+  window_days: 30
+  event_time: '2024-11-04T05:30:00+00:00'
+  n_aois: 8
+  n_products: 9
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR775
+  ems_code: EMSR775
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Norway
+  countries:
+  - Norway
+  lat: 60.8549
+  lon: 6.3678
+  size_km: 10.0
+  before_date: '2024-08-02'
+  after_date: '2024-11-14'
+  window_days: 30
+  event_time: '2024-10-31T23:00:00+00:00'
+  n_aois: 14
+  n_products: 13
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR774
+  ems_code: EMSR774
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Floods in Veracruz, Mexico
+  countries:
+  - Mexico
+  lat: 18.4507
+  lon: -95.0958
+  size_km: 10.0
+  before_date: '2024-07-30'
+  after_date: '2024-11-11'
+  window_days: 30
+  event_time: '2024-10-28T06:00:00+00:00'
+  n_aois: 2
+  n_products: 9
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR773
+  ems_code: EMSR773
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Valencia Region, Spain
+  countries:
+  - Spain
+  lat: 39.2892
+  lon: -0.4359
+  size_km: 10.0
+  before_date: '2024-07-31'
+  after_date: '2024-11-12'
+  window_days: 30
+  event_time: '2024-10-29T14:30:00+00:00'
+  n_aois: 36
+  n_products: 44
+  closed: true
+  gdacs_id: FL1102983
+- id: ems_EMSR772
+  ems_code: EMSR772
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Cameroon
+  countries:
+  - Cameroon
+  lat: 11.7827
+  lon: 14.8403
+  size_km: 10.0
+  before_date: '2024-07-27'
+  after_date: '2024-11-08'
+  window_days: 30
+  event_time: '2024-10-25T12:00:00+00:00'
+  n_aois: 3
+  n_products: 3
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR771
+  ems_code: EMSR771
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Emilia- Romagna, Italy
+  countries:
+  - Italy
+  lat: 44.5265
+  lon: 11.3145
+  size_km: 10.0
+  before_date: '2024-07-22'
+  after_date: '2024-11-03'
+  window_days: 30
+  event_time: '2024-10-20T12:00:00+00:00'
+  n_aois: 8
+  n_products: 17
+  closed: true
+  gdacs_id: FL1102961
+- id: ems_EMSR770
+  ems_code: EMSR770
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Bosnia and Herzegovina
+  countries:
+  - Bosnia and Herzegovina
+  lat: 43.4503
+  lon: 17.6941
+  size_km: 10.0
+  before_date: '2024-07-06'
+  after_date: '2024-10-18'
+  window_days: 30
+  event_time: '2024-10-04T00:00:00+00:00'
+  n_aois: 3
+  n_products: 7
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR768
+  ems_code: EMSR768
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Croatia and Slovenia
+  countries:
+  - Slovenia
+  - Croatia
+  lat: 45.4717
+  lon: 15.5481
+  size_km: 10.0
+  before_date: '2024-07-06'
+  after_date: '2024-10-18'
+  window_days: 30
+  event_time: '2024-10-04T14:00:00+00:00'
+  n_aois: 2
+  n_products: 8
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR766
+  ems_code: EMSR766
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Croatia
+  countries:
+  - Croatia
+  lat: 45.6734
+  lon: 18.9575
+  size_km: 10.0
+  before_date: '2024-06-27'
+  after_date: '2024-10-09'
+  window_days: 30
+  event_time: '2024-09-25T12:00:00+00:00'
+  n_aois: 2
+  n_products: 6
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR764
+  ems_code: EMSR764
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Lower Austria, Austria
+  countries:
+  - Austria
+  lat: 48.1851
+  lon: 16.3766
+  size_km: 10.0
+  before_date: '2024-06-16'
+  after_date: '2024-09-28'
+  window_days: 30
+  event_time: '2024-09-14T12:00:00+00:00'
+  n_aois: 5
+  n_products: 7
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR763
+  ems_code: EMSR763
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Germany
+  countries:
+  - Germany
+  lat: 52.0754
+  lon: 14.7358
+  size_km: 10.0
+  before_date: '2024-06-24'
+  after_date: '2024-10-06'
+  window_days: 30
+  event_time: '2024-09-22T12:00:00+00:00'
+  n_aois: 1
+  n_products: 9
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR762
+  ems_code: EMSR762
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Emilia-Romagna, Italy
+  countries:
+  - Italy
+  lat: 44.2816
+  lon: 11.8915
+  size_km: 10.0
+  before_date: '2024-06-20'
+  after_date: '2024-10-02'
+  window_days: 30
+  event_time: '2024-09-18T06:00:00+00:00'
+  n_aois: 7
+  n_products: 9
+  closed: true
+  gdacs_id: FL1102833
+- id: ems_EMSR761
+  ems_code: EMSR761
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Dresden, Germany
+  countries:
+  - Germany
+  lat: 51.0519
+  lon: 13.7298
+  size_km: 10.0
+  before_date: '2024-06-20'
+  after_date: '2024-10-02'
+  window_days: 30
+  event_time: '2024-09-18T12:00:00+00:00'
+  n_aois: 1
+  n_products: 3
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR759
+  ems_code: EMSR759
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood on the Danube in Hungary, Austria, and Slovakia
+  countries:
+  - Hungary
+  - Austria
+  - Slovakia
+  lat: 47.7508
+  lon: 17.9741
+  size_km: 10.0
+  before_date: '2024-06-15'
+  after_date: '2024-09-27'
+  window_days: 30
+  event_time: '2024-09-13T06:00:00+00:00'
+  n_aois: 2
+  n_products: 4
+  closed: true
+  gdacs_id: FL1102899
+- id: ems_EMSR758
+  ems_code: EMSR758
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Galati and Vaslui counties, Romania
+  countries:
+  - Romania
+  lat: 45.7886
+  lon: 27.6686
+  size_km: 10.0
+  before_date: '2024-06-16'
+  after_date: '2024-09-28'
+  window_days: 30
+  event_time: '2024-09-14T05:00:00+00:00'
+  n_aois: 4
+  n_products: 8
+  closed: true
+  gdacs_id: FL1102899
+- id: ems_EMSR757
+  ems_code: EMSR757
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in March, Morava Basins, Slovakia
+  countries:
+  - Slovakia
+  lat: 48.3948
+  lon: 16.914
+  size_km: 10.0
+  before_date: '2024-06-15'
+  after_date: '2024-09-27'
+  window_days: 30
+  event_time: '2024-09-13T15:00:00+00:00'
+  n_aois: 2
+  n_products: 6
+  closed: true
+  gdacs_id: FL1102899
+- id: ems_EMSR756
+  ems_code: EMSR756
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in South West Poland
+  countries:
+  - Poland
+  - Czechia
+  lat: 50.6038
+  lon: 16.6673
+  size_km: 10.0
+  before_date: '2024-06-16'
+  after_date: '2024-09-28'
+  window_days: 30
+  event_time: '2024-09-14T00:00:00+00:00'
+  n_aois: 20
+  n_products: 35
+  closed: true
+  gdacs_id: FL1102899
+- id: ems_EMSR755
+  ems_code: EMSR755
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Brandenbourg, Germany
+  countries:
+  - Germany
+  lat: 51.9489
+  lon: 14.7006
+  size_km: 10.0
+  before_date: '2024-06-16'
+  after_date: '2024-09-28'
+  window_days: 30
+  event_time: '2024-09-14T12:00:00+00:00'
+  n_aois: 1
+  n_products: 2
+  closed: true
+  gdacs_id: FL1102899
+- id: ems_EMSR754
+  ems_code: EMSR754
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Viet Nam
+  countries:
+  - Viet Nam
+  lat: 21.0499
+  lon: 105.8148
+  size_km: 10.0
+  before_date: '2024-06-11'
+  after_date: '2024-09-23'
+  window_days: 30
+  event_time: '2024-09-09T06:00:00+00:00'
+  n_aois: 11
+  n_products: 11
+  closed: true
+  gdacs_id: TC1001090
+- id: ems_EMSR753
+  ems_code: EMSR753
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Borno, Nigeria
+  countries:
+  - Nigeria
+  lat: 11.7224
+  lon: 13.2786
+  size_km: 10.0
+  before_date: '2024-06-12'
+  after_date: '2024-09-24'
+  window_days: 30
+  event_time: '2024-09-10T00:00:00+00:00'
+  n_aois: 1
+  n_products: 2
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR751
+  ems_code: EMSR751
+  source: EMS
+  category: Mass movement
+  event_type: landslide
+  expected_action: submit_to_ground
+  name: Mass movement in Campania Region, Italy
+  countries:
+  - Italy
+  lat: 40.9646
+  lon: 14.525
+  size_km: 10.0
+  before_date: '2024-05-29'
+  after_date: '2024-09-10'
+  window_days: 30
+  event_time: '2024-08-27T12:00:00+00:00'
+  n_aois: 1
+  n_products: 2
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR750
+  ems_code: EMSR750
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Sudan
+  countries:
+  - Sudan
+  lat: 19.7901
+  lon: 37.1027
+  size_km: 10.0
+  before_date: '2024-05-27'
+  after_date: '2024-09-08'
+  window_days: 30
+  event_time: '2024-08-25T12:00:00+00:00'
+  n_aois: 5
+  n_products: 8
+  closed: true
+  gdacs_id: FL1102854
+- id: ems_EMSR742
+  ems_code: EMSR742
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Storm in Latvia
+  countries:
+  - Latvia
+  lat: 56.6442
+  lon: 23.7152
+  size_km: 10.0
+  before_date: '2024-04-29'
+  after_date: '2024-08-11'
+  window_days: 30
+  event_time: '2024-07-28T15:00:00+00:00'
+  n_aois: 3
+  n_products: 6
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR734
+  ems_code: EMSR734
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Tropical Cyclone BERYL-24, Caribbean and Central America.
+  countries:
+  - Mexico
+  - Saint Vincent and the Grenadines
+  - Grenada
+  - Barbados
+  - Jamaica
+  lat: 12.4952
+  lon: -61.4282
+  size_km: 10.0
+  before_date: '2024-04-02'
+  after_date: '2024-07-15'
+  window_days: 30
+  event_time: '2024-07-01T06:00:00+00:00'
+  n_aois: 19
+  n_products: 19
+  closed: true
+  gdacs_id: TC1001067
+- id: ems_EMSR732
+  ems_code: EMSR732
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Windstorm in Lorraine, France
+  countries:
+  - France
+  lat: 48.6791
+  lon: 6.1945
+  size_km: 10.0
+  before_date: '2024-03-31'
+  after_date: '2024-07-13'
+  window_days: 30
+  event_time: '2024-06-29T15:00:00+00:00'
+  n_aois: 1
+  n_products: 0
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR728
+  ems_code: EMSR728
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Germany
+  countries:
+  - Germany
+  lat: 48.9735
+  lon: 10.8902
+  size_km: 10.0
+  before_date: '2024-03-02'
+  after_date: '2024-06-14'
+  window_days: 30
+  event_time: '2024-05-31T12:00:00+00:00'
+  n_aois: 10
+  n_products: 37
+  closed: true
+  gdacs_id: FL1102602
+- id: ems_EMSR725
+  ems_code: EMSR725
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Sweden
+  countries:
+  - Sweden
+  lat: 65.8445
+  lon: 24.123
+  size_km: 10.0
+  before_date: '2024-02-20'
+  after_date: '2024-06-03'
+  window_days: 30
+  event_time: '2024-05-20T18:00:00+00:00'
+  n_aois: 4
+  n_products: 9
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR722
+  ems_code: EMSR722
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Saarland region, Germany
+  countries:
+  - Germany
+  lat: 49.2926
+  lon: 7.09
+  size_km: 10.0
+  before_date: '2024-02-17'
+  after_date: '2024-05-31'
+  window_days: 30
+  event_time: '2024-05-17T08:00:00+00:00'
+  n_aois: 2
+  n_products: 9
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR721
+  ems_code: EMSR721
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Lombardy, Italy
+  countries:
+  - Italy
+  lat: 45.5965
+  lon: 9.3966
+  size_km: 10.0
+  before_date: '2024-02-14'
+  after_date: '2024-05-28'
+  window_days: 30
+  event_time: '2024-05-14T14:00:00+00:00'
+  n_aois: 1
+  n_products: 1
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR720
+  ems_code: EMSR720
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Rio Grande Do Sul State, Brazil
+  countries:
+  - Brazil
+  lat: -28.9825
+  lon: -51.9727
+  size_km: 10.0
+  before_date: '2024-02-02'
+  after_date: '2024-05-16'
+  window_days: 30
+  event_time: '2024-05-02T00:00:00+00:00'
+  n_aois: 5
+  n_products: 16
+  closed: true
+  gdacs_id: FL1102592
+- id: ems_EMSR718
+  ems_code: EMSR718
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Ireland
+  countries:
+  - Ireland
+  lat: 53.5235
+  lon: -8.1238
+  size_km: 10.0
+  before_date: '2024-01-12'
+  after_date: '2024-04-25'
+  window_days: 30
+  event_time: '2024-04-11T18:00:00+00:00'
+  n_aois: 2
+  n_products: 3
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR714
+  ems_code: EMSR714
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Tropical Cyclone BELAL-24 in Réunion Island
+  countries:
+  - France
+  lat: -20.9712
+  lon: 55.4679
+  size_km: 10.0
+  before_date: '2023-10-17'
+  after_date: '2024-01-29'
+  window_days: 30
+  event_time: '2024-01-15T22:00:00+00:00'
+  n_aois: 5
+  n_products: 0
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR713
+  ems_code: EMSR713
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Saarland region,  Germany
+  countries:
+  - Germany
+  lat: 49.4314
+  lon: 6.8534
+  size_km: 10.0
+  before_date: '2023-10-04'
+  after_date: '2024-01-16'
+  window_days: 30
+  event_time: '2024-01-02T18:00:00+00:00'
+  n_aois: 1
+  n_products: 1
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR712
+  ems_code: EMSR712
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Lower Saxony region, Germany
+  countries:
+  - Germany
+  lat: 52.8147
+  lon: 9.5966
+  size_km: 10.0
+  before_date: '2023-09-25'
+  after_date: '2024-01-07'
+  window_days: 30
+  event_time: '2023-12-24T08:00:00+00:00'
+  n_aois: 10
+  n_products: 71
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR711
+  ems_code: EMSR711
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in southwestern France
+  countries:
+  - France
+  lat: 45.9332
+  lon: -0.9953
+  size_km: 10.0
+  before_date: '2023-09-15'
+  after_date: '2023-12-28'
+  window_days: 30
+  event_time: '2023-12-14T12:00:00+00:00'
+  n_aois: 3
+  n_products: 6
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR710
+  ems_code: EMSR710
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Romania
+  countries:
+  - Romania
+  lat: 47.0593
+  lon: 22.2278
+  size_km: 10.0
+  before_date: '2023-09-02'
+  after_date: '2023-12-15'
+  window_days: 30
+  event_time: '2023-12-01T06:00:00+00:00'
+  n_aois: 2
+  n_products: 0
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR708
+  ems_code: EMSR708
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Belgium
+  countries:
+  - Belgium
+  lat: 51.0497
+  lon: 2.8519
+  size_km: 10.0
+  before_date: '2023-08-12'
+  after_date: '2023-11-24'
+  window_days: 30
+  event_time: '2023-11-10T06:00:00+00:00'
+  n_aois: 3
+  n_products: 10
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR706
+  ems_code: EMSR706
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in northern France
+  countries:
+  - France
+  lat: 50.7458
+  lon: 1.8127
+  size_km: 10.0
+  before_date: '2023-08-09'
+  after_date: '2023-11-21'
+  window_days: 30
+  event_time: '2023-11-07T00:00:00+00:00'
+  n_aois: 7
+  n_products: 18
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR705
+  ems_code: EMSR705
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Tuscany region, Italy
+  countries:
+  - Italy
+  lat: 43.7002
+  lon: 10.7732
+  size_km: 10.0
+  before_date: '2023-08-04'
+  after_date: '2023-11-16'
+  window_days: 30
+  event_time: '2023-11-02T22:00:00+00:00'
+  n_aois: 8
+  n_products: 10
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR703
+  ems_code: EMSR703
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Tropical cyclone OTIS-23 in Acapulco, Mexico
+  countries:
+  - Mexico
+  lat: 16.8608
+  lon: -99.8523
+  size_km: 10.0
+  before_date: '2023-07-27'
+  after_date: '2023-11-08'
+  window_days: 30
+  event_time: '2023-10-25T06:25:00+00:00'
+  n_aois: 3
+  n_products: 4
+  closed: true
+  gdacs_id: TC1001028
+- id: ems_EMSR702
+  ems_code: EMSR702
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Tropical Cyclone LOLA in Vanuatu and Solomon Islands
+  countries:
+  - Vanuatu
+  lat: -15.635
+  lon: 167.4977
+  size_km: 10.0
+  before_date: '2023-07-26'
+  after_date: '2023-11-07'
+  window_days: 30
+  event_time: '2023-10-24T08:00:00+00:00'
+  n_aois: 15
+  n_products: 20
+  closed: true
+  gdacs_id: TC1001027
+- id: ems_EMSR701
+  ems_code: EMSR701
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Schleswig Holstein region, Germany
+  countries:
+  - Germany
+  lat: 54.2936
+  lon: 10.9332
+  size_km: 10.0
+  before_date: '2023-07-22'
+  after_date: '2023-11-03'
+  window_days: 30
+  event_time: '2023-10-20T14:00:00+00:00'
+  n_aois: 8
+  n_products: 9
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR698
+  ems_code: EMSR698
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Scotland, United Kingdom
+  countries:
+  - United Kingdom
+  lat: 56.8652
+  lon: -3.7573
+  size_km: 10.0
+  before_date: '2023-07-09'
+  after_date: '2023-10-21'
+  window_days: 30
+  event_time: '2023-10-07T12:00:00+00:00'
+  n_aois: 3
+  n_products: 5
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR697
+  ems_code: EMSR697
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Thessaly and Sterea Ellada regions, Greece
+  countries:
+  - Greece
+  lat: 38.9014
+  lon: 22.4214
+  size_km: 10.0
+  before_date: '2023-06-29'
+  after_date: '2023-10-11'
+  window_days: 30
+  event_time: '2023-09-27T17:00:00+00:00'
+  n_aois: 4
+  n_products: 5
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR696
+  ems_code: EMSR696
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Libya
+  countries:
+  - Libya
+  lat: 32.72
+  lon: 22.62
+  size_km: 10.0
+  before_date: '2023-06-13'
+  after_date: '2023-09-25'
+  window_days: 30
+  event_time: '2023-09-11T02:00:00+00:00'
+  n_aois: 8
+  n_products: 8
+  closed: true
+  gdacs_id: FL1102204
+- id: ems_EMSR695
+  ems_code: EMSR695
+  source: EMS
+  category: Earthquake
+  event_type: earthquake
+  expected_action: submit_to_ground
+  name: Earthquake in Marrakesh-Safi Region, Morocco
+  countries:
+  - Morocco
+  lat: 31.814
+  lon: -8.3139
+  size_km: 10.0
+  before_date: '2023-06-10'
+  after_date: '2023-09-22'
+  window_days: 30
+  event_time: '2023-09-08T22:11:00+00:00'
+  n_aois: 8
+  n_products: 8
+  closed: true
+  gdacs_id: EQ1390643
+- id: ems_EMSR694
+  ems_code: EMSR694
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Spain
+  countries:
+  - Spain
+  lat: 40.0962
+  lon: -4.2273
+  size_km: 10.0
+  before_date: '2023-06-05'
+  after_date: '2023-09-17'
+  window_days: 30
+  event_time: '2023-09-03T17:00:00+00:00'
+  n_aois: 3
+  n_products: 3
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR693
+  ems_code: EMSR693
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Burgas, Bulgaria
+  countries:
+  - Bulgaria
+  lat: 42.0803
+  lon: 27.9039
+  size_km: 10.0
+  before_date: '2023-06-07'
+  after_date: '2023-09-19'
+  window_days: 30
+  event_time: '2023-09-05T20:00:00+00:00'
+  n_aois: 1
+  n_products: 1
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR692
+  ems_code: EMSR692
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Greece
+  countries:
+  - Greece
+  lat: 39.3625
+  lon: 22.9003
+  size_km: 10.0
+  before_date: '2023-06-07'
+  after_date: '2023-09-19'
+  window_days: 30
+  event_time: '2023-09-05T10:30:00+00:00'
+  n_aois: 7
+  n_products: 29
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR691
+  ems_code: EMSR691
+  source: EMS
+  category: Mass movement
+  event_type: landslide
+  expected_action: submit_to_ground
+  name: Landslide in western Slovenia
+  countries:
+  - Slovenia
+  lat: 46.0874
+  lon: 14.2553
+  size_km: 10.0
+  before_date: '2023-05-08'
+  after_date: '2023-08-20'
+  window_days: 30
+  event_time: '2023-08-06T00:30:00+00:00'
+  n_aois: 1
+  n_products: 2
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR684
+  ems_code: EMSR684
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Sweden
+  countries:
+  - Sweden
+  lat: 60.4563
+  lon: 16.4191
+  size_km: 10.0
+  before_date: '2023-05-17'
+  after_date: '2023-08-29'
+  window_days: 30
+  event_time: '2023-08-15T00:00:00+00:00'
+  n_aois: 9
+  n_products: 10
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR683
+  ems_code: EMSR683
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Norway
+  countries:
+  - Norway
+  lat: 60.9384
+  lon: 9.8218
+  size_km: 10.0
+  before_date: '2023-05-10'
+  after_date: '2023-08-22'
+  window_days: 30
+  event_time: '2023-08-08T09:00:00+00:00'
+  n_aois: 23
+  n_products: 32
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR680
+  ems_code: EMSR680
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Slovenia
+  countries:
+  - Slovenia
+  lat: 46.0054
+  lon: 14.6191
+  size_km: 10.0
+  before_date: '2023-05-06'
+  after_date: '2023-08-18'
+  window_days: 30
+  event_time: '2023-08-04T09:00:00+00:00'
+  n_aois: 15
+  n_products: 17
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR668
+  ems_code: EMSR668
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Norway
+  countries:
+  - Norway
+  lat: 59.7472
+  lon: 10.2046
+  size_km: 10.0
+  before_date: '2023-02-21'
+  after_date: '2023-06-05'
+  window_days: 30
+  event_time: '2023-05-22T17:00:00+00:00'
+  n_aois: 7
+  n_products: 9
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR666
+  ems_code: EMSR666
+  source: EMS
+  category: Mass movement
+  event_type: landslide
+  expected_action: submit_to_ground
+  name: Landslides in Slovenia
+  countries:
+  - Slovenia
+  lat: 46.4164
+  lon: 15.579
+  size_km: 10.0
+  before_date: '2023-02-16'
+  after_date: '2023-05-31'
+  window_days: 30
+  event_time: '2023-05-17T00:00:00+00:00'
+  n_aois: 2
+  n_products: 0
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR665
+  ems_code: EMSR665
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Bosnia and Herzegovina
+  countries:
+  - Bosnia and Herzegovina
+  lat: 44.9447
+  lon: 16.5784
+  size_km: 10.0
+  before_date: '2023-02-16'
+  after_date: '2023-05-31'
+  window_days: 30
+  event_time: '2023-05-17T11:00:00+00:00'
+  n_aois: 2
+  n_products: 2
+  closed: true
+  gdacs_id: null
+- id: ems_EMSR664
+  ems_code: EMSR664
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Italy
+  countries:
+  - Italy
+  lat: 44.2517
+  lon: 12.0465
+  size_km: 10.0
+  before_date: '2023-02-15'
+  after_date: '2023-05-30'
+  window_days: 30
+  event_time: '2023-05-16T11:00:00+00:00'
+  n_aois: 8
+  n_products: 12
+  closed: true
+  gdacs_id: FL1101976
+- id: ems_EMSR663
+  ems_code: EMSR663
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Mozambique
+  countries:
+  - Mozambique
+  lat: -15.2506
+  lon: 35.946
+  size_km: 10.0
+  before_date: '2022-12-12'
+  after_date: '2023-03-26'
+  window_days: 30
+  event_time: '2023-03-12T00:00:00+00:00'
+  n_aois: 1
+  n_products: 1
+  closed: true
+  gdacs_id: TC1000961
+- id: ems_EMSR662
+  ems_code: EMSR662
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Uganda
+  countries:
+  - Uganda
+  lat: 0.0697
+  lon: 31.7625
+  size_km: 10.0
+  before_date: '2023-02-10'
+  after_date: '2023-05-25'
+  window_days: 30
+  event_time: '2023-05-11T01:00:00+00:00'
+  n_aois: 1
+  n_products: 1
+  closed: true
+  gdacs_id: FL1101996
+- id: ems_EMSR661
+  ems_code: EMSR661
+  source: EMS
+  category: Storm
+  event_type: storm
+  expected_action: submit_to_ground
+  name: Storm in Myanmar
+  countries:
+  - Myanmar
+  lat: 20.2072
+  lon: 92.8674
+  size_km: 10.0
+  before_date: '2003-02-13'
+  after_date: '2003-05-28'
+  window_days: 30
+  event_time: '2003-05-14T06:00:00+00:00'
+  n_aois: 7
+  n_products: 14
+  closed: true
+  gdacs_id: TC1000970
+- id: ems_EMSR659
+  ems_code: EMSR659
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Emilia-Romagna, Italy
+  countries:
+  - Italy
+  lat: 44.397
+  lon: 11.8453
+  size_km: 10.0
+  before_date: '2023-02-01'
+  after_date: '2023-05-16'
+  window_days: 30
+  event_time: '2023-05-02T18:00:00+00:00'
+  n_aois: 7
+  n_products: 12
+  closed: true
+  gdacs_id: FL1101976
+- id: ems_EMSR657
+  ems_code: EMSR657
+  source: EMS
+  category: Flood
+  event_type: flood
+  expected_action: submit_to_ground
+  name: Flood in Daugava River valley, Latvia
+  countries:
+  - Latvia
+  lat: 56.0119
+  lon: 26.3617
+  size_km: 10.0
+  before_date: '2022-12-30'
+  after_date: '2023-04-13'
+  window_days: 30
+  event_time: '2023-03-30T00:00:00+00:00'
+  n_aois: 1
+  n_products: 7
+  closed: true
+  gdacs_id: FL1101921

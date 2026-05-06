@@ -1,0 +1,561 @@
+created_at: '2026-05-01T01:40:18.398437+00:00'
+n_cases: 31
+cases:
+- id: hab_florida_red_tide_2018
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Karenia brevis (red) — Florida SW coast
+  region: Florida SW coast
+  country: USA
+  species: Karenia brevis
+  bloom_color: red
+  lat: 27.0
+  lon: -82.5
+  size_km: 10.0
+  before_date: '2017-09-15'
+  after_date: '2018-09-15'
+  window_days: 30
+  event_time: '2018-09-15T00:00:00+00:00'
+  notes: Catastrophic red tide off Sarasota / Naples; mass marine die-off
+- id: hab_florida_red_tide_2021
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Karenia brevis (red) — Tampa Bay
+  region: Tampa Bay
+  country: USA
+  species: Karenia brevis
+  bloom_color: red
+  lat: 27.7
+  lon: -82.6
+  size_km: 10.0
+  before_date: '2020-07-15'
+  after_date: '2021-07-15'
+  window_days: 30
+  event_time: '2021-07-15T00:00:00+00:00'
+  notes: Tampa Bay K. brevis outbreak
+- id: hab_lake_erie_toledo_2014
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Microcystis (green) — Lake Erie
+  region: Lake Erie
+  country: USA
+  species: Microcystis
+  bloom_color: green
+  lat: 41.65
+  lon: -83.2
+  size_km: 10.0
+  before_date: '2013-08-15'
+  after_date: '2014-08-15'
+  window_days: 30
+  event_time: '2014-08-15T00:00:00+00:00'
+  notes: Toledo drinking-water crisis
+- id: hab_lake_erie_2017
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Microcystis (green) — Lake Erie western
+  region: Lake Erie western
+  country: USA
+  species: Microcystis
+  bloom_color: green
+  lat: 41.75
+  lon: -83.1
+  size_km: 10.0
+  before_date: '2016-09-15'
+  after_date: '2017-09-15'
+  window_days: 30
+  event_time: '2017-09-15T00:00:00+00:00'
+  notes: Annual cyanoHAB, severe year
+- id: hab_lake_erie_2019
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Microcystis (green) — Lake Erie western
+  region: Lake Erie western
+  country: USA
+  species: Microcystis
+  bloom_color: green
+  lat: 41.6
+  lon: -82.9
+  size_km: 10.0
+  before_date: '2018-08-15'
+  after_date: '2019-08-15'
+  window_days: 30
+  event_time: '2019-08-15T00:00:00+00:00'
+  notes: Severe bloom
+- id: hab_chesapeake_mahogany_2020
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Prorocentrum (red-brown) — Chesapeake Bay
+  region: Chesapeake Bay
+  country: USA
+  species: Prorocentrum
+  bloom_color: red-brown
+  lat: 38.5
+  lon: -76.4
+  size_km: 10.0
+  before_date: '2019-08-16'
+  after_date: '2020-08-15'
+  window_days: 30
+  event_time: '2020-08-15T00:00:00+00:00'
+  notes: Mahogany tide
+- id: hab_pacific_pseudonitzschia_2015
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Pseudo-nitzschia (brown) — Pacific NW
+  region: Pacific NW
+  country: USA
+  species: Pseudo-nitzschia
+  bloom_color: brown
+  lat: 47.5
+  lon: -124.5
+  size_km: 10.0
+  before_date: '2014-06-15'
+  after_date: '2015-06-15'
+  window_days: 30
+  event_time: '2015-06-15T00:00:00+00:00'
+  notes: Largest Pseudo-nitzschia bloom on record, domoic acid
+- id: hab_yellow_sea_ulva_2008
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Ulva prolifera (green) — Qingdao Yellow Sea
+  region: Qingdao Yellow Sea
+  country: China
+  species: Ulva prolifera
+  bloom_color: green
+  lat: 36.0
+  lon: 120.5
+  size_km: 10.0
+  before_date: '2007-07-16'
+  after_date: '2008-07-15'
+  window_days: 30
+  event_time: '2008-07-15T00:00:00+00:00'
+  notes: Pre-Olympics green tide, mega bloom
+- id: hab_yellow_sea_ulva_2021
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Ulva prolifera (green) — Yellow Sea
+  region: Yellow Sea
+  country: China
+  species: Ulva prolifera
+  bloom_color: green
+  lat: 35.5
+  lon: 120.5
+  size_km: 10.0
+  before_date: '2020-07-15'
+  after_date: '2021-07-15'
+  window_days: 30
+  event_time: '2021-07-15T00:00:00+00:00'
+  notes: Largest Ulva bloom on record (~1700 km²)
+- id: hab_yellow_sea_ulva_2024
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Ulva prolifera (green) — Yellow Sea
+  region: Yellow Sea
+  country: China
+  species: Ulva prolifera
+  bloom_color: green
+  lat: 35.4
+  lon: 120.4
+  size_km: 10.0
+  before_date: '2023-07-16'
+  after_date: '2024-07-15'
+  window_days: 30
+  event_time: '2024-07-15T00:00:00+00:00'
+  notes: Annual recurrence
+- id: hab_taihu_microcystis_2007
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Microcystis (green) — Lake Taihu
+  region: Lake Taihu
+  country: China
+  species: Microcystis
+  bloom_color: green
+  lat: 31.2
+  lon: 120.2
+  size_km: 10.0
+  before_date: '2006-05-15'
+  after_date: '2007-05-15'
+  window_days: 30
+  event_time: '2007-05-15T00:00:00+00:00'
+  notes: Wuxi drinking-water crisis
+- id: hab_taihu_microcystis_2022
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Microcystis (green) — Lake Taihu
+  region: Lake Taihu
+  country: China
+  species: Microcystis
+  bloom_color: green
+  lat: 31.1
+  lon: 120.2
+  size_km: 10.0
+  before_date: '2021-08-15'
+  after_date: '2022-08-15'
+  window_days: 30
+  event_time: '2022-08-15T00:00:00+00:00'
+  notes: Annual recurrence
+- id: hab_dianchi_2020
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Microcystis (green) — Lake Dianchi (Kunming)
+  region: Lake Dianchi (Kunming)
+  country: China
+  species: Microcystis
+  bloom_color: green
+  lat: 24.85
+  lon: 102.7
+  size_km: 10.0
+  before_date: '2019-07-16'
+  after_date: '2020-07-15'
+  window_days: 30
+  event_time: '2020-07-15T00:00:00+00:00'
+  notes: Chronic eutrophication
+- id: hab_chaohu_2019
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Microcystis (green) — Lake Chaohu
+  region: Lake Chaohu
+  country: China
+  species: Microcystis
+  bloom_color: green
+  lat: 31.55
+  lon: 117.5
+  size_km: 10.0
+  before_date: '2018-08-15'
+  after_date: '2019-08-15'
+  window_days: 30
+  event_time: '2019-08-15T00:00:00+00:00'
+  notes: Severe bloom
+- id: hab_kamchatka_2020
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Karenia (brown-red) — Avacha Bay
+  region: Avacha Bay
+  country: Russia
+  species: Karenia
+  bloom_color: brown-red
+  lat: 52.8
+  lon: 158.5
+  size_km: 10.0
+  before_date: '2019-09-16'
+  after_date: '2020-09-15'
+  window_days: 30
+  event_time: '2020-09-15T00:00:00+00:00'
+  notes: Catastrophic die-off, surfer deaths reported
+- id: hab_hokkaido_2021
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Karenia selliformis (red) — Sea of Okhotsk
+  region: Sea of Okhotsk
+  country: Japan
+  species: Karenia selliformis
+  bloom_color: red
+  lat: 43.5
+  lon: 145.3
+  size_km: 10.0
+  before_date: '2020-09-15'
+  after_date: '2021-09-15'
+  window_days: 30
+  event_time: '2021-09-15T00:00:00+00:00'
+  notes: Salmon mass mortality
+- id: hab_vladivostok_2018
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Alexandrium (red) — Peter the Great Bay
+  region: Peter the Great Bay
+  country: Russia
+  species: Alexandrium
+  bloom_color: red
+  lat: 43.1
+  lon: 131.9
+  size_km: 10.0
+  before_date: '2017-08-15'
+  after_date: '2018-08-15'
+  window_days: 30
+  event_time: '2018-08-15T00:00:00+00:00'
+  notes: Annual recurrence
+- id: hab_north_sea_cyano_2022
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: cyanobacteria (green) — North Sea
+  region: North Sea
+  country: Germany
+  species: cyanobacteria
+  bloom_color: green
+  lat: 55.5
+  lon: 7.5
+  size_km: 10.0
+  before_date: '2021-07-15'
+  after_date: '2022-07-15'
+  window_days: 30
+  event_time: '2022-07-15T00:00:00+00:00'
+  notes: Summer cyanobacteria
+- id: hab_baltic_cyano_2018
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: cyanobacteria (green) — Baltic Sea central
+  region: Baltic Sea central
+  country: Sweden/Finland
+  species: cyanobacteria
+  bloom_color: green
+  lat: 58.5
+  lon: 19.5
+  size_km: 10.0
+  before_date: '2017-07-15'
+  after_date: '2018-07-15'
+  window_days: 30
+  event_time: '2018-07-15T00:00:00+00:00'
+  notes: Recurring summer cyanobacteria
+- id: hab_baltic_cyano_2021
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: cyanobacteria (green) — Gulf of Finland
+  region: Gulf of Finland
+  country: Finland
+  species: cyanobacteria
+  bloom_color: green
+  lat: 59.8
+  lon: 23.5
+  size_km: 10.0
+  before_date: '2020-07-15'
+  after_date: '2021-07-15'
+  window_days: 30
+  event_time: '2021-07-15T00:00:00+00:00'
+  notes: Severe cyanoHAB
+- id: hab_adriatic_2019
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Phaeocystis/Diatom (brown) — Northern Adriatic
+  region: Northern Adriatic
+  country: Italy
+  species: Phaeocystis/Diatom
+  bloom_color: brown
+  lat: 44.8
+  lon: 13.2
+  size_km: 10.0
+  before_date: '2018-07-15'
+  after_date: '2019-07-15'
+  window_days: 30
+  event_time: '2019-07-15T00:00:00+00:00'
+  notes: Recurring mucilage
+- id: hab_black_sea_emiliania_2017
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Emiliania huxleyi (turquoise) — Black Sea
+  region: Black Sea
+  country: Ukraine
+  species: Emiliania huxleyi
+  bloom_color: turquoise
+  lat: 43.5
+  lon: 33.5
+  size_km: 10.0
+  before_date: '2016-06-15'
+  after_date: '2017-06-15'
+  window_days: 30
+  event_time: '2017-06-15T00:00:00+00:00'
+  notes: Coccolithophore, milky turquoise
+- id: hab_chile_patagonia_2016
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Pseudochattonella (brown) — Chiloé Patagonia
+  region: Chiloé Patagonia
+  country: Chile
+  species: Pseudochattonella
+  bloom_color: brown
+  lat: -42.5
+  lon: -73.2
+  size_km: 10.0
+  before_date: '2015-04-16'
+  after_date: '2016-04-15'
+  window_days: 30
+  event_time: '2016-04-15T00:00:00+00:00'
+  notes: Catastrophic salmon farm losses
+- id: hab_pisco_peru_2017
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Akashiwo (red) — Pisco Bay
+  region: Pisco Bay
+  country: Peru
+  species: Akashiwo
+  bloom_color: red
+  lat: -13.7
+  lon: -76.2
+  size_km: 10.0
+  before_date: '2016-04-15'
+  after_date: '2017-04-15'
+  window_days: 30
+  event_time: '2017-04-15T00:00:00+00:00'
+  notes: Pisco / Paracas red tide
+- id: hab_argentina_coast_2021
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Alexandrium (red) — Buenos Aires coast
+  region: Buenos Aires coast
+  country: Argentina
+  species: Alexandrium
+  bloom_color: red
+  lat: -38.0
+  lon: -57.5
+  size_km: 10.0
+  before_date: '2020-04-15'
+  after_date: '2021-04-15'
+  window_days: 30
+  event_time: '2021-04-15T00:00:00+00:00'
+  notes: Annual recurrence
+- id: hab_oman_red_tide_2008
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Cochlodinium (red) — Gulf of Oman
+  region: Gulf of Oman
+  country: Oman
+  species: Cochlodinium
+  bloom_color: red
+  lat: 24.0
+  lon: 58.0
+  size_km: 10.0
+  before_date: '2007-09-16'
+  after_date: '2008-09-15'
+  window_days: 30
+  event_time: '2008-09-15T00:00:00+00:00'
+  notes: Massive Cochlodinium bloom
+- id: hab_kuwait_red_tide_2022
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Karenia mikimotoi (red) — Kuwait Bay
+  region: Kuwait Bay
+  country: Kuwait
+  species: Karenia mikimotoi
+  bloom_color: red
+  lat: 29.4
+  lon: 48.0
+  size_km: 10.0
+  before_date: '2021-08-15'
+  after_date: '2022-08-15'
+  window_days: 30
+  event_time: '2022-08-15T00:00:00+00:00'
+  notes: Marine die-off
+- id: hab_namibia_2019
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Sulfide / Diatom (green) — Namibian shelf
+  region: Namibian shelf
+  country: Namibia
+  species: Sulfide / Diatom
+  bloom_color: green
+  lat: -23.0
+  lon: 14.0
+  size_km: 10.0
+  before_date: '2018-04-15'
+  after_date: '2019-04-15'
+  window_days: 30
+  event_time: '2019-04-15T00:00:00+00:00'
+  notes: Sulfide eruption + bloom
+- id: hab_tasman_phytoplankton_2018
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: Phytoplankton (green) — Tasman Sea east coast
+  region: Tasman Sea east coast
+  country: Australia
+  species: Phytoplankton
+  bloom_color: green
+  lat: -42.0
+  lon: 148.5
+  size_km: 10.0
+  before_date: '2017-12-15'
+  after_date: '2018-12-15'
+  window_days: 30
+  event_time: '2018-12-15T00:00:00+00:00'
+  notes: Anomalous bloom
+- id: hab_caspian_2020
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: cyanobacteria (green) — Caspian Sea
+  region: Caspian Sea
+  country: Iran
+  species: cyanobacteria
+  bloom_color: green
+  lat: 38.0
+  lon: 52.0
+  size_km: 10.0
+  before_date: '2019-08-16'
+  after_date: '2020-08-15'
+  window_days: 30
+  event_time: '2020-08-15T00:00:00+00:00'
+  notes: Recurring bloom
+- id: hab_lake_winnipeg_2017
+  source: HAB
+  category: Algal bloom
+  event_type: algal_bloom
+  expected_action: submit_to_ground
+  name: cyanobacteria (green) — Lake Winnipeg
+  region: Lake Winnipeg
+  country: Canada
+  species: cyanobacteria
+  bloom_color: green
+  lat: 51.5
+  lon: -97.0
+  size_km: 10.0
+  before_date: '2016-08-15'
+  after_date: '2017-08-15'
+  window_days: 30
+  event_time: '2017-08-15T00:00:00+00:00'
+  notes: Eutrophic lake, annual
