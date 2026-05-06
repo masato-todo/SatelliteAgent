@@ -15,37 +15,39 @@
 - Docker (SimSat と LFM サービスをコンテナで起動するため)
 - GPU (LFM 推論サーバを動かす場合のみ。Gemini path だけなら不要)
 
-## クローン直後のセットアップ
+## Quickstart
 
 ```bash
 git clone https://github.com/masato-todo/SatelliteAgent.git
 cd SatelliteAgent
-uv sync --extra simsat --extra geo
+
+WITH_SIMSAT=1 ./setup.sh          # 1. install Python deps + (Optional) SimSat at :9005
+./scripts/download_models.sh      # 2. pull ~2.7 GB of weights from HF Hub
+docker compose up -d              # 3. wildfire LoRA :8085 + LFM2 agent vLLM :8086
+./scripts/smoke_test.sh           # 4. self-check (boots app + verifies one full path)
+uv run python -m app.server       # 5. start the app for real
 ```
 
-これでアプリ本体の Python 環境ができる。`data/` 以下は metadata 一式 (~6MB)
-が同梱済みなので追加ダウンロード不要。
+Open <http://localhost:7860>.
+
+各スクリプトの役割:
+
+| スクリプト | 何をするか | いつ使うか |
+|---|---|---|
+| `setup.sh` | `uv sync`、`.env` 雛形、`WITH_SIMSAT=1` なら SimSat fork を `vendor/SimSat` に clone + `patches/simsat/*.patch` 適用 + `docker compose up sim` | **clone 直後の 1 回** (べき等なので再実行 OK) |
+| `scripts/download_models.sh` | LFM2.5-VL-450M ベース + wildfire LoRA + 学習済 sft-grpo の 3 repo を `./models/` に DL | **clone 直後の 1 回** (重複 DL は HF 側で skip) |
+| `scripts/smoke_test.sh` | アプリを bg で立ち上げて FireEdge fire case を fetch → `detect_wildfire` 呼び出し → `sentinel_datetime` 一致 + `fire_detected=true` を assert → アプリ kill。**起動用ではなく検証用** | **セットアップ後の動作確認**、コード変更後の regression check、CI |
+| `uv run python -m app.server` | アプリ本体起動 (foreground) | 普段使い |
 
 ## 必要な 3 サービス
 
-| サーバ | port | 役割 |
-|---|---:|---|
-| **SimSat** | 9005 | Sentinel-2 mock backend (lat/lon/timestamp → S2 image) — `vendor/SimSat` をクローンしてパッチ適用、`patches/simsat/README.md` 参照 |
-| **wildfire LoRA** | 8085 | `detect_wildfire` ツールが叩く FireEdge LoRA (transformers + peft) |
-| **LFM2 agent vLLM** | 8086 | 学習済 LFM2.5-VL-450M-sft-grpo (Run Agent の `lfm25_vl_sft_grpo` provider) |
+| サーバ | port | 役割 | 立ち上げ |
+|---|---:|---|---|
+| **SimSat** | 9005 | Sentinel-2 mock backend (lat/lon/timestamp → S2 image) | `WITH_SIMSAT=1 ./setup.sh` (`patches/simsat/README.md` で詳細) |
+| **wildfire LoRA** | 8085 | `detect_wildfire` ツールが叩く FireEdge LoRA (transformers + peft) | `docker compose up -d lfm-wildfire` |
+| **LFM2 agent vLLM** | 8086 | 学習済 [LFM2.5-VL-450M-sft-grpo](https://huggingface.co/todo1111/LFM2.5-VL-450M-sft-grpo-S64) (Run Agent の `lfm25_vl_sft_grpo` provider) | `docker compose up -d lfm2-agent` |
 
-LoRA + vLLM の 2 つはルートの `docker-compose.yaml` でまとめて立てられる:
-
-```bash
-# 必須 env を .env に書く (or 同コマンドの直前で export)
-echo "WILDFIRE_MODEL_DIR=$HOME/path/to/wildfire-staging"  >> .env
-echo "LFM2_AGENT_MODEL_DIR=$HOME/path/to/sft-grpo-ckpt" >> .env
-
-docker compose up -d              # build + 起動 (~5 分)
-docker compose logs -f lfm2-agent # vLLM の load 完了待ち
-```
-
-詳細は `docker-compose.yaml` 上部のコメントと `services/agent/Dockerfile`、`docs/INTEGRATION_LFM2VL.md` 参照。
+`docker-compose.yaml` 上部のコメント、`services/agent/Dockerfile`、`docs/INTEGRATION_LFM2VL.md` も参照。
 
 (任意: Settings ⚙ で **Gemini を使う場合は `GOOGLE_API_KEY` を `.env` に**。
 ローカル vLLM 1.6B も別途使いたい場合は port 8002 に立てる、これは `config/providers.yaml` の `lfm25_vl_local` 既定エントリ。)
