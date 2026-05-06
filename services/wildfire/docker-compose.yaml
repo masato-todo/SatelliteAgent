@@ -3,8 +3,9 @@
 # GPU:   shares the same GPU as vllm-qwen36-35b. The wildfire LoRA model is
 #        ~1 GB FP16, so 1-2 GB of VRAM is plenty.
 #
-# Usage:
-#   cd serve_lfm
+# Usage (this dir on its own — root docker-compose.yaml is preferred for the
+# full stack):
+#   cd services/wildfire
 #   docker compose up -d --build
 #   docker compose logs -f
 #

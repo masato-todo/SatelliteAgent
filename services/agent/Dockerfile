@@ -16,7 +16,7 @@
 #   (`[fn(arg=...)]`) into OpenAI tool_calls JSON.
 #
 # Build:
-#   docker build -t satelliteagent/lfm2-agent:cu130 -f serve_lfm2/Dockerfile .
+#   docker build -t satelliteagent/lfm2-agent:cu130 -f services/agent/Dockerfile .
 #
 # Run (bind a checkpoint at /model):
 #   docker run --gpus all -p 8086:8000 \
