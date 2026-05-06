@@ -41,6 +41,43 @@ def _to_openai_tools() -> list[dict]:
     return out
 
 
+def _tool_catalog_block() -> str:
+    """Render the tool list as a compact bullet catalog.
+
+    LFM2.5-VL doesn't always read `tools=` reliably; surfacing the names +
+    one-line descriptions in the system prompt nudges it to call only
+    *valid* tool names instead of hallucinating ones.
+    """
+    lines = ["Available tools (call by exact name; do not invent others):"]
+    for s in TOOL_SCHEMAS:
+        desc = (s.get("description") or "").strip().split("\n", 1)[0]
+        if len(desc) > 140:
+            desc = desc[:137] + "..."
+        params = (s.get("input_schema") or {}).get("properties") or {}
+        required = set((s.get("input_schema") or {}).get("required") or [])
+        if params:
+            arg_bits = []
+            for k in params:
+                arg_bits.append(f"{k}*" if k in required else k)
+            args = "(" + ", ".join(arg_bits) + ")"
+        else:
+            args = "()"
+        marker = " [TERMINAL]" if s["name"] in TERMINAL_TOOLS else ""
+        lines.append(f"- {s['name']}{args}{marker}: {desc}")
+    lines.append("(* = required argument)")
+    lines.append(
+        "Workflow: 1) classify_change, 2) at least one spectral tool "
+        "(compute_index / fetch_band / compute_index_delta / zoom_in), "
+        "3) compose_report -> use the returned report_id, "
+        "4) submit_to_ground(report_id, reason, ...) OR drop(reason). "
+        "`reason` MUST cite concrete numbers from observations."
+    )
+    return "\n".join(lines)
+
+
+SYSTEM_PROMPT_WITH_TOOLS = SYSTEM_PROMPT + "\n\n" + _tool_catalog_block()
+
+
 def run_react_openai(
     image_before: str,
     image_after: str,
@@ -50,20 +87,43 @@ def run_react_openai(
     tool_registry: dict[str, Callable[..., Any]],
     max_steps: int = 10,
     timeout: float = 180.0,
+    user_instructions: str | None = None,
+    forced_tool_steps: int = 2,
 ) -> Iterator[dict[str, Any]]:
-    """ReAct loop driven by an OpenAI-compatible /chat/completions endpoint."""
+    """ReAct loop driven by an OpenAI-compatible /chat/completions endpoint.
+
+    Args:
+        user_instructions: optional free-text appended to the user turn so
+            the operator can specify what to look for (e.g. "focus on the
+            western shoreline; ignore cloud cover"). Empty/None falls back
+            to the generic prompt.
+        forced_tool_steps: number of leading steps where `tool_choice` is
+            forced to "required". After that the model may answer with text
+            only (so a final natural-language summary is allowed). 0 means
+            never force; very high values reproduce the old always-required
+            behavior. Default 2 = force investigation kickoff.
+    """
     tools = _to_openai_tools()
+    base_instruction = (
+        "Analyze the pair and decide what to report to ground. "
+        "Use your tools. End with submit_to_ground(report_id, reason, ...) "
+        "or drop(reason)."
+    )
+    if user_instructions and user_instructions.strip():
+        user_text = (
+            base_instruction
+            + "\n\nOperator instructions: " + user_instructions.strip()
+        )
+    else:
+        user_text = base_instruction
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": SYSTEM_PROMPT_WITH_TOOLS},
         {"role": "user", "content": [
             {"type": "text", "text": "BEFORE (previous satellite pass over this location):"},
             {"type": "image_url", "image_url": {"url": _data_url(image_before)}},
             {"type": "text", "text": "AFTER (current pass, same location):"},
             {"type": "image_url", "image_url": {"url": _data_url(image_after)}},
-            {"type": "text", "text": (
-                "Analyze the pair and decide what to report to ground. "
-                "Use your tools. End with submit_to_ground(...) or drop()."
-            )},
+            {"type": "text", "text": user_text},
         ]},
     ]
 
@@ -71,11 +131,17 @@ def run_react_openai(
     headers = {"Authorization": f"Bearer {api_key}"}
 
     for step in range(max_steps):
+        # `tool_choice="required"` for the first few turns guarantees the
+        # model actually picks up its tools instead of returning a chatty
+        # "I would inspect..." answer. After that we switch to "auto" so
+        # the model is free to terminate with a tool call AND prepend a
+        # natural-language summary in the same turn.
+        force_tool = step < forced_tool_steps
         body = {
             "model": model,
             "messages": messages,
             "tools": tools,
-            "tool_choice": "auto",
+            "tool_choice": "required" if force_tool else "auto",
             "max_tokens": 1024,
             "temperature": 0.1,
         }
@@ -101,7 +167,9 @@ def run_react_openai(
 
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:
-            # Model gave a text answer without invoking a terminal tool.
+            # No tool call: treat as the model's final natural-language answer.
+            # The flow is: tool gating (compose_report -> submit_to_ground)
+            # already prevents fabricated submits, so giving up here is safe.
             yield {"type": "final", "name": "end_turn",
                    "result": {"note": "model stopped without submit_to_ground/drop",
                               "text": content}}
@@ -138,7 +206,12 @@ def run_react_openai(
                 "content": json.dumps(result, ensure_ascii=False),
             })
 
-            if name in TERMINAL_TOOLS:
+            # Only treat submit_to_ground/drop as terminal when they actually
+            # succeeded. A rejected submit (e.g. unknown report_id) returns
+            # status="error" and the model gets another turn to recover.
+            if name in TERMINAL_TOOLS and isinstance(result, dict) \
+                    and result.get("status") not in ("error",) \
+                    and "error" not in result:
                 yield {"type": "final", "name": name, "result": result}
                 terminal_hit = True
                 break

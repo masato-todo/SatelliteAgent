@@ -38,7 +38,7 @@ def get_region_info(lat: float, lon: float) -> dict[str, Any]:
     }
 
 
-def get_history(lat: float, lon: float, days: int = 30) -> list[dict[str, Any]]:
+def get_history(days: int = 30, **_ignored) -> list[dict[str, Any]]:
     return []
 
 
@@ -56,6 +56,15 @@ def estimate_size(report_id: str, with_image: bool) -> dict[str, int]:
 
 
 _REPORT_COUNTER = [0]
+# Per-process registry of compose_report() outputs so submit_to_ground()
+# can verify the agent isn't fabricating report_ids.
+#
+# HACK: in-memory only. Lost on server restart and not shared across
+# uvicorn workers. For multi-worker / persistent setups, replace with a
+# sidecar JSON or sqlite store keyed by report_id.
+# TODO: also persist the composed payload alongside the trace so that
+# submitted reports can be inspected after the fact.
+_COMPOSED_REPORTS: dict[str, dict[str, Any]] = {}
 
 
 def compose_report(
@@ -65,7 +74,14 @@ def compose_report(
     attach_image: bool = False,
 ) -> dict[str, str]:
     _REPORT_COUNTER[0] += 1
-    return {"report_id": f"r-{_REPORT_COUNTER[0]:04d}"}
+    rid = f"r-{_REPORT_COUNTER[0]:04d}"
+    _COMPOSED_REPORTS[rid] = {
+        "change_type": change_type,
+        "urgency": int(urgency),
+        "description": description,
+        "attach_image": bool(attach_image),
+    }
+    return {"report_id": rid}
 
 
 def submit_to_ground(
@@ -78,17 +94,30 @@ def submit_to_ground(
     """Transmit a report to ground.
 
     Args:
-        report_id: identifier for this report.
+        report_id: identifier returned by an earlier compose_report() call.
+            Submitting an unknown id is rejected — the agent must compose
+            before submitting.
         reason: free-text justification. Cite which spectral index and
             numbers led to the decision (e.g. "NBR delta frac_decrease_strong
             = 0.78, well above burn threshold 0.27 -> wildfire").
     """
+    if report_id not in _COMPOSED_REPORTS:
+        return {
+            "status": "error",
+            "error": (
+                f"unknown report_id '{report_id}'. Call compose_report() "
+                "first and reuse the report_id it returns."
+            ),
+            "known_report_ids": sorted(_COMPOSED_REPORTS.keys())[-5:],
+        }
+    composed = _COMPOSED_REPORTS[report_id]
     return {
         "status": "ok",
         "report_id": report_id,
         "reason": reason,
         "attached": attach_image,
         "attached_crop_key": attach_crop_key,
+        "composed": composed,
     }
 
 

@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+import requests as _requests
 import yaml
 from dotenv import load_dotenv
 load_dotenv()
@@ -45,6 +46,7 @@ from tools.spectral import (
 from tools.wildfire import make_detect_wildfire
 from tools.scorer import make_get_change_stats
 from tools.quality import assess_image_quality_impl, STATS_SCHEMA
+from tools.region import make_get_region_info
 from tools.classifier_gemini import make_classify_change as make_classify_change_gemini
 from tools.classifier_openai import make_classify_change as make_classify_change_openai
 
@@ -56,7 +58,7 @@ def _build_provider():
         except Exception as e:
             print(f"[startup] Gemini provider disabled: {e}")
     else:
-        print("[startup] GOOGLE_API_KEY not set - Run Agent will return an error until set")
+        print("[startup] GOOGLE_API_KEY not set - Gemini path disabled (local vLLM provider is used by default)")
     return None
 
 
@@ -76,19 +78,50 @@ def _load_providers_config(app_dir: Path) -> list[dict]:
         return []
 
 
+def _resolve_provider_cfg(provider_name: str | None) -> dict:
+    """Pick the provider config for this request.
+
+    Resolution order:
+      1. caller passed a `provider_name` -> must match an entry by name,
+         otherwise HTTP 400 (no silent substitution — debugging nightmare).
+      2. caller passed nothing -> the entry whose `default: true` is set.
+      3. no `default: true` anywhere -> first configured entry (deterministic).
+
+    Returns the cfg dict; never returns None.
+    """
+    if not PROVIDERS_CFG:
+        raise HTTPException(503, "no VLM providers configured (config/providers.yaml)")
+    if provider_name:
+        cfg = next((p for p in PROVIDERS_CFG if p.get("name") == provider_name), None)
+        if cfg is None:
+            available = [p.get("name") for p in PROVIDERS_CFG]
+            raise HTTPException(
+                400,
+                f"unknown provider '{provider_name}'. available: {available}",
+            )
+        return cfg
+    cfg = next((p for p in PROVIDERS_CFG if p.get("default") is True), None)
+    if cfg is not None:
+        return cfg
+    return PROVIDERS_CFG[0]
+
+
 def _make_classify_change(before_path: str, after_path: str,
                           provider_name: str | None, model: str | None) -> Callable:
-    """Resolve provider config + return classify_change callable."""
-    cfg = next((p for p in PROVIDERS_CFG if p.get("name") == provider_name), None)
-    if cfg is None:
-        # Fall back to legacy Gemini provider built from env
-        return make_classify_change_gemini(before_path, after_path, PROVIDER)
+    """Resolve provider config + return classify_change callable.
+
+    Raises HTTPException with a precise status code so the UI/SSE surfaces
+    misconfiguration instead of silently swapping providers.
+    """
+    cfg = _resolve_provider_cfg(provider_name)
     kind = cfg.get("kind")
     chosen_model = model or cfg.get("default_model")
     if kind == "gemini":
         if PROVIDER is None:
-            return make_classify_change_gemini(before_path, after_path, None)
-        # Override model for this call
+            raise HTTPException(
+                503,
+                "Gemini provider selected but GOOGLE_API_KEY/GEMINI_API_KEY is not set",
+            )
         bound = type(PROVIDER)(model=chosen_model) if chosen_model else PROVIDER
         return make_classify_change_gemini(before_path, after_path, bound)
     if kind == "openai_compat":
@@ -98,7 +131,7 @@ def _make_classify_change(before_path: str, after_path: str,
             before_path, after_path,
             base_url=cfg["base_url"], model=chosen_model, api_key=api_key,
         )
-    return make_classify_change_gemini(before_path, after_path, None)
+    raise HTTPException(500, f"provider '{cfg.get('name')}' has unknown kind '{kind}'")
 
 
 APP_DIR = Path(__file__).parent
@@ -134,21 +167,29 @@ def build_tool_registry(before_path: str, after_path: str,
     reg["capture_crop"] = make_capture_crop(before_path, after_path)
     reg["classify_change"] = _make_classify_change(before_path, after_path, provider_name, model)
     if context:
-        # Other factories use the user-requested ts (legacy semantics).
-        spectral_ctx = {k: v for k, v in context.items()
-                        if k not in ("before_actual_dt", "after_actual_dt")}
-        reg["fetch_band"]          = make_fetch_band(**spectral_ctx)
-        reg["false_color"]         = make_false_color(**spectral_ctx)
-        reg["compute_index"]       = make_compute_index(**spectral_ctx)
-        reg["compute_index_delta"] = make_compute_index_delta(**spectral_ctx)
-        reg["get_change_stats"]    = make_get_change_stats(**spectral_ctx)
+        # Strip non-SimSat-fetch keys before splatting into spectral factories.
+        # - region_info: reverse-geocoded sidecar (feat/toolcall, anti-fabrication)
+        # - before_actual_dt/after_actual_dt: SimSat-returned STAC datetimes
+        #   (Branch/refactor, used by detect_wildfire eval-parity binding)
+        ctx = dict(context)
+        region_payload  = ctx.pop("region_info", None)
+        before_actual   = ctx.pop("before_actual_dt", None)
+        after_actual    = ctx.pop("after_actual_dt",  None)
+        reg["fetch_band"]          = make_fetch_band(**ctx)
+        reg["false_color"]         = make_false_color(**ctx)
+        reg["compute_index"]       = make_compute_index(**ctx)
+        reg["compute_index_delta"] = make_compute_index_delta(**ctx)
+        reg["get_change_stats"]    = make_get_change_stats(**ctx)
+        reg["get_region_info"]     = make_get_region_info(
+            lat=ctx["lat"], lon=ctx["lon"], region_payload=region_payload,
+        )
         # detect_wildfire pins the *actual* SimSat-returned STAC item (= the
         # scene the user sees on the map) so the LFM input matches what eval
         # at scripts/eval_wildfire_hf_simsat.py --use-sentinel-datetime sends.
         reg["detect_wildfire"] = make_detect_wildfire(
-            lat=context["lat"], lon=context["lon"], size_km=context["size_km"],
-            before_ts=context.get("before_actual_dt") or context["before_ts"],
-            after_ts=context.get("after_actual_dt")  or context["after_ts"],
+            lat=ctx["lat"], lon=ctx["lon"], size_km=ctx["size_km"],
+            before_ts=before_actual or ctx["before_ts"],
+            after_ts=after_actual  or ctx["after_ts"],
         )
     return reg
 
@@ -231,6 +272,52 @@ def _save_meta(key: str, meta: dict) -> None:
         pass  # non-fatal
 
 
+def _reverse_geocode(lat: float, lon: float) -> dict[str, Any] | None:
+    """Resolve (lat, lon) to a region descriptor via OSM Nominatim /reverse.
+
+    Best-effort: returns None on any failure. Used to populate the cache
+    sidecar at fetch time so the agent's `get_region_info` tool returns
+    real data instead of a stub fixture.
+
+    HACK: Direct call to public Nominatim with hardcoded UA. No caching
+    or rate limiting (Nominatim's policy is 1 req/s, sustained use must
+    self-host or use a paid provider).
+    TODO: cache by (round(lat,3), round(lon,3)) to avoid redundant calls
+    when the same scene is fetched repeatedly.
+    """
+    try:
+        r = _requests.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={"lat": lat, "lon": lon, "format": "json", "zoom": 10,
+                    "addressdetails": 1},
+            headers={"User-Agent": "SatelliteAgent/0.1 (hackathon, no commercial use)"},
+            timeout=6,
+        )
+        if r.status_code != 200:
+            return None
+        data = r.json() or {}
+        addr = data.get("address") or {}
+        country = addr.get("country")
+        country_code = (addr.get("country_code") or "").upper() or None
+        # Nominatim returns various keys depending on density; pick the most
+        # specific human-meaningful place name available.
+        region = (
+            addr.get("city") or addr.get("town") or addr.get("village")
+            or addr.get("municipality") or addr.get("county")
+            or addr.get("state_district") or addr.get("state")
+            or addr.get("region")
+        )
+        return {
+            "display_name": data.get("display_name"),
+            "region":       region,
+            "state":        addr.get("state"),
+            "country":      country,
+            "country_code": country_code,
+        }
+    except Exception:
+        return None
+
+
 def _fetch_one(lat: float, lon: float, ts: str, size_km: float, window_days: int,
                resolution_meters: int = 10) -> tuple[str | None, dict[str, Any]]:
     key = _cache_key(lat, lon, _normalize_ts(ts), size_km, resolution_meters)
@@ -241,9 +328,17 @@ def _fetch_one(lat: float, lon: float, ts: str, size_km: float, window_days: int
         meta = _load_meta(key) or {}
         # Backfill stats if missing OR if stats schema has changed.
         current_stats = meta.get("stats") or {}
+        dirty = False
         if current_stats.get("_schema") != STATS_SCHEMA:
             stats = assess_image_quality_impl(str(path))
             meta = {**meta, "stats": stats}
+            dirty = True
+        # Backfill region info for sidecars written before reverse-geocode
+        # was wired in.
+        if "region_info" not in meta:
+            meta = {**meta, "region_info": _reverse_geocode(lat, lon)}
+            dirty = True
+        if dirty:
             _save_meta(key, {**meta, "request": meta.get("request") or request_info})
         return key, {"cached": True, "path": str(path), **meta}
     # Negative cache (previously queried and no image was available)
@@ -258,9 +353,12 @@ def _fetch_one(lat: float, lon: float, ts: str, size_km: float, window_days: int
         )
         result.image.save(path)
         stats = assess_image_quality_impl(str(path))
-        meta_to_save = {**result.metadata, "stats": stats, "request": request_info}
+        region_info = _reverse_geocode(lat, lon)
+        meta_to_save = {**result.metadata, "stats": stats, "request": request_info,
+                        "region_info": region_info}
         _save_meta(key, meta_to_save)
-        return key, {"cached": False, **result.metadata, "stats": stats}
+        return key, {"cached": False, **result.metadata, "stats": stats,
+                     "region_info": region_info}
     except SimSatError as e:
         msg = str(e)
         # Only persist as a negative cache for *deterministic* "no data here"
@@ -313,12 +411,15 @@ def _context_from_keys(before_key: str, after_key: str) -> dict[str, Any] | None
     size_km = sz_a if sz_a is not None else sz_b
     if lat is None or lon is None or size_km is None or ts_a is None or ts_b is None:
         return None
+    # Region info was attached at fetch time; prefer the after-side sidecar.
+    region_info = am.get("region_info") or bm.get("region_info")
     return {
         "lat": float(lat), "lon": float(lon),
         "size_km": float(size_km),
         "before_ts": ts_b, "after_ts": ts_a,
         "before_actual_dt": bm.get("datetime") or ts_b,
         "after_actual_dt":  am.get("datetime") or ts_a,
+        "region_info": region_info,
     }
 
 
@@ -1138,10 +1239,17 @@ def api_xbd_damage_overlay(
 @app.get("/api/templates")
 def api_templates() -> dict[str, Any]:
     base = os.environ.get("SIMSAT_API_URL", "http://localhost:9005")
-    if PROVIDER is not None:
-        provider_info = {"kind": "gemini", "model": getattr(PROVIDER, "model", "?")}
-    else:
-        provider_info = {"kind": "none", "model": "no API key"}
+    # Reflect the configured catalog default (single source of truth).
+    # The UI overrides this per-request via its own selector.
+    try:
+        cfg = _resolve_provider_cfg(None)
+        provider_info = {
+            "name":  cfg.get("name"),
+            "kind":  cfg.get("kind"),
+            "model": cfg.get("default_model") or "?",
+        }
+    except HTTPException:
+        provider_info = {"kind": "none", "model": "no provider configured"}
     return {
         "simsat_url": base,
         "templates": LOCATION_TEMPLATES,
@@ -1249,8 +1357,6 @@ def api_after_candidates(req: AfterCandidatesRequest) -> dict[str, Any]:
 
     return {"candidates": results, "anchor_date": ref.strftime("%Y-%m-%d")}
 
-
-import requests as _requests  # lazy local alias to avoid shadowing
 
 @app.get("/api/geocode")
 def api_geocode(q: str) -> dict[str, Any]:
@@ -1493,13 +1599,14 @@ def _save_agent_trace(scene_id: str, events: list[dict], provider: str | None,
 @app.get("/api/run_agent")
 def api_run_agent(before_key: str, after_key: str,
                   provider: str | None = None, model: str | None = None,
-                  scene_id: str | None = None):
+                  scene_id: str | None = None,
+                  instructions: str | None = None):
     before_path = CACHE_DIR / f"{before_key}.png"
     after_path  = CACHE_DIR / f"{after_key}.png"
     if not before_path.exists() or not after_path.exists():
         raise HTTPException(400, "fetch images first")
 
-    cfg = next((p for p in PROVIDERS_CFG if p.get("name") == provider), None)
+    cfg = _resolve_provider_cfg(provider)
     context = _context_from_keys(before_key, after_key)
     tool_registry = build_tool_registry(str(before_path), str(after_path), context,
                                         provider_name=provider, model=model)
@@ -1507,7 +1614,7 @@ def api_run_agent(before_key: str, after_key: str,
     def generate():
         events_collected: list[dict] = []
         try:
-            if cfg and cfg.get("kind") == "openai_compat":
+            if cfg.get("kind") == "openai_compat":
                 api_key_env = cfg.get("api_key_env")
                 api_key = os.environ.get(api_key_env, "dummy") if api_key_env else "dummy"
                 events = run_react_openai(
@@ -1516,10 +1623,18 @@ def api_run_agent(before_key: str, after_key: str,
                     model=model or cfg.get("default_model"),
                     api_key=api_key,
                     tool_registry=tool_registry,
+                    user_instructions=instructions,
                 )
-            else:
+            elif cfg.get("kind") == "gemini":
+                if PROVIDER is None:
+                    raise HTTPException(
+                        503,
+                        "Gemini provider selected but GOOGLE_API_KEY/GEMINI_API_KEY is not set",
+                    )
                 events = run_react(str(before_path), str(after_path),
                                    provider=PROVIDER, tool_registry=tool_registry)
+            else:
+                raise HTTPException(500, f"unknown provider kind '{cfg.get('kind')}'")
             for event in events:
                 events_collected.append(event)
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"

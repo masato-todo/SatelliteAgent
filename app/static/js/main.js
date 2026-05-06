@@ -96,6 +96,9 @@ function runAgent() {
   if (state.vlmProvider)  qp.set("provider", state.vlmProvider);
   if (state.vlmModel)     qp.set("model",    state.vlmModel);
   if (state.dm3 && state.dm3.id) qp.set("scene_id", state.dm3.id);
+  const instrEl = $("agent-instructions");
+  const instructions = instrEl ? (instrEl.value || "").trim() : "";
+  if (instructions) qp.set("instructions", instructions);
   const url = `/api/run_agent?${qp.toString()}`;
   const es = new EventSource(url);
   state.eventSource = es;
