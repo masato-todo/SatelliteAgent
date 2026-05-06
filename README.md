@@ -15,37 +15,33 @@
 - Docker (SimSat と LFM サービスをコンテナで起動するため)
 - GPU (LFM 推論サーバを動かす場合のみ。Gemini path だけなら不要)
 
-## クローン直後のセットアップ
+## Quickstart
 
 ```bash
 git clone https://github.com/masato-todo/SatelliteAgent.git
 cd SatelliteAgent
-uv sync --extra simsat --extra geo
+
+WITH_SIMSAT=1 ./setup.sh          # uv sync, optional SimSat clone+patch+up
+./scripts/download_models.sh      # ~2.7 GB pull from HF Hub
+docker compose up -d              # GPU services on :8085 (wildfire) and :8086 (agent)
+uv run python -m app.server       # the app on :7860
 ```
 
-これでアプリ本体の Python 環境ができる。`data/` 以下は metadata 一式 (~6MB)
-が同梱済みなので追加ダウンロード不要。
+Then open <http://localhost:7860>. Verify the wiring with:
+
+```bash
+./scripts/smoke_test.sh           # end-to-end invariant check (fetch + detect_wildfire)
+```
 
 ## 必要な 3 サービス
 
-| サーバ | port | 役割 |
-|---|---:|---|
-| **SimSat** | 9005 | Sentinel-2 mock backend (lat/lon/timestamp → S2 image) — `vendor/SimSat` をクローンしてパッチ適用、`patches/simsat/README.md` 参照 |
-| **wildfire LoRA** | 8085 | `detect_wildfire` ツールが叩く FireEdge LoRA (transformers + peft) |
-| **LFM2 agent vLLM** | 8086 | 学習済 LFM2.5-VL-450M-sft-grpo (Run Agent の `lfm25_vl_sft_grpo` provider) |
+| サーバ | port | 役割 | 立ち上げ |
+|---|---:|---|---|
+| **SimSat** | 9005 | Sentinel-2 mock backend (lat/lon/timestamp → S2 image) | `WITH_SIMSAT=1 ./setup.sh` (`patches/simsat/README.md` で詳細) |
+| **wildfire LoRA** | 8085 | `detect_wildfire` ツールが叩く FireEdge LoRA (transformers + peft) | `docker compose up -d lfm-wildfire` |
+| **LFM2 agent vLLM** | 8086 | 学習済 [LFM2.5-VL-450M-sft-grpo](https://huggingface.co/todo1111/LFM2.5-VL-450M-sft-grpo-S64) (Run Agent の `lfm25_vl_sft_grpo` provider) | `docker compose up -d lfm2-agent` |
 
-LoRA + vLLM の 2 つはルートの `docker-compose.yaml` でまとめて立てられる:
-
-```bash
-# 必須 env を .env に書く (or 同コマンドの直前で export)
-echo "WILDFIRE_MODEL_DIR=$HOME/path/to/wildfire-staging"  >> .env
-echo "LFM2_AGENT_MODEL_DIR=$HOME/path/to/sft-grpo-ckpt" >> .env
-
-docker compose up -d              # build + 起動 (~5 分)
-docker compose logs -f lfm2-agent # vLLM の load 完了待ち
-```
-
-詳細は `docker-compose.yaml` 上部のコメントと `services/agent/Dockerfile`、`docs/INTEGRATION_LFM2VL.md` 参照。
+`docker-compose.yaml` 上部のコメント、`services/agent/Dockerfile`、`docs/INTEGRATION_LFM2VL.md` も参照。
 
 (任意: Settings ⚙ で **Gemini を使う場合は `GOOGLE_API_KEY` を `.env` に**。
 ローカル vLLM 1.6B も別途使いたい場合は port 8002 に立てる、これは `config/providers.yaml` の `lfm25_vl_local` 既定エントリ。)
