@@ -1,0 +1,87 @@
+diff --git a/src/sim/ImagingProviders/sentinel_provider.py b/src/sim/ImagingProviders/sentinel_provider.py
+index 8e52951..cb84410 100644
+--- a/src/sim/ImagingProviders/sentinel_provider.py
++++ b/src/sim/ImagingProviders/sentinel_provider.py
+@@ -4,7 +4,9 @@ import matplotlib.pyplot as plt
+ from pystac_client import Client
+ import odc.stac
+ import numpy as np
++from collections import defaultdict
+ from datetime import datetime, timedelta, timezone
++from shapely.geometry import box, shape
+ 
+ class SentinelProvider:
+ 
+@@ -77,26 +79,49 @@ class SentinelProvider:
+             query={"eo:cloud_cover": {"lt": 100}},
+         )
+ 
+-        # Deterministically pick the newest acquisition in the requested window.
+         items = list(search.items())
+         if not items:
+             return None, None
+-        item = max(items, key=lambda i: i.datetime)
++
++        # Group items by acquisition date (solar day). Adjacent MGRS tiles in the
++        # same Sentinel-2 swath are captured in the same minute, so grouping by
++        # date is sufficient for mosaicing tile-boundary AOIs.
++        by_date = defaultdict(list)
++        for it in items:
++            by_date[it.datetime.date()].append(it)
++
++        target = box(*bbox)
++        target_area = target.area or 1e-12
++
++        def score(date_items):
++            union = None
++            for it in date_items:
++                geom = shape(it.geometry)
++                union = geom if union is None else union.union(geom)
++            coverage = (union.intersection(target).area / target_area) if union is not None else 0.0
++            cloud_mean = sum(it.properties.get('eo:cloud_cover', 100) for it in date_items) / len(date_items)
++            return (coverage, -cloud_mean / 100.0)
++
++        # Highest bbox-coverage date wins (tie-break: lower mean cloud, latest date).
++        best_date = max(by_date.keys(), key=lambda d: (*score(by_date[d]), d))
++        best_items = by_date[best_date]
++        rep = max(best_items, key=lambda i: i.datetime)
+ 
+         metadata = {
+-            "id": item.id,
+-            "date": item.datetime,
+-            "cloud_cover": item.properties['eo:cloud_cover'],
+-            "platform": item.properties['platform'],
+-            "available_bands": list(item.assets.keys())
++            "id": rep.id,
++            "date": rep.datetime,
++            "cloud_cover": sum(it.properties['eo:cloud_cover'] for it in best_items) / len(best_items),
++            "platform": rep.properties['platform'],
++            "available_bands": list(rep.assets.keys()),
+         }
+ 
+         image_data = odc.stac.load(
+-            [item],
++            best_items,                  # mosaic all items from the chosen date
+             bands=spectral_bands,
+             bbox=bbox,
+-            resolution=10, # Note: Coarser bands will be upsampled to 10m
+-            chunks={"x": 2048, "y": 2048}
++            resolution=10,
++            chunks={"x": 2048, "y": 2048},
++            groupby="solar_day",         # collapse same-day items into one time slice
+         ).isel(time=0)
+ 
+         return image_data, metadata
+@@ -161,7 +186,11 @@ class SentinelProvider:
+             return (image_array / 3000 * 255).clip(0, 255).astype(np.uint8)
+         
+         array = scale_rgb_255(image_data[spectral_bands].to_array().values.transpose(1, 2, 0))
+-        image = Image.fromarray(array)
++        if array.shape[-1] == 1:
++            array = array.squeeze(-1)
++            image = Image.fromarray(array, mode="L")
++        else:
++            image = Image.fromarray(array)
+         buffer = io.BytesIO()
+         image.save(buffer, format="PNG")
+         buffer.seek(0) # go to the beginning of the buffer

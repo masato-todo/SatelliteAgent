@@ -1,0 +1,73 @@
+diff --git a/docker-compose.yaml b/docker-compose.yaml
+index 71ed400..667f4db 100644
+--- a/docker-compose.yaml
++++ b/docker-compose.yaml
+@@ -1,49 +1,19 @@
+-version: '3.8'
+-
+-services:
+-  dashboard:
+-    build:
+-      context: .
+-      dockerfile: Dockerfile.dashboard
+-    container_name: fakesat-dashboard
+-    ports:
+-      - "8000:8000"
+-    volumes:
+-      # Persist database
+-      - dashboard_db:/app
+-    environment:
+-      - DJANGO_DEBUG=1
+-      - DJANGO_SECRET_KEY=dev-secret-key-change-me-in-production
+-    networks:
+-      - fakesat-network
+-    healthcheck:
+-      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/api/telemetry/recent/\")'"]
+-      interval: 30s
+-      timeout: 10s
+-      retries: 3
+-      start_period: 40s
+-
+-  sim:
+-    build:
+-      context: .
+-      dockerfile: Dockerfile.sim
+-    container_name: fakesat-sim
+-    ports:
+-      - "9005:8000"  # Map sim API to different port on host
+-    environment:
+-      - DASHBOARD_URL=http://dashboard:8000
+-      - MAPBOX_ACCESS_TOKEN
+-    depends_on:
+-      dashboard:
+-        condition: service_healthy
+-    networks:
+-      - fakesat-network
+-    # Allow multiprocessing
+-    shm_size: '256mb'
+-
+-networks:
+-  fakesat-network:
+-    driver: bridge
+-
+-volumes:
+-  dashboard_db:
++version: '3.8'
++
++services:
++  sim:
++    build:
++      context: .
++      dockerfile: Dockerfile.sim
++    container_name: fakesat-sim
++    ports:
++      - "9005:8000"
++    environment:
++      - MAPBOX_ACCESS_TOKEN=
++    networks:
++      - fakesat-network
++    shm_size: '256mb'
++
++networks:
++  fakesat-network:
++    driver: bridge

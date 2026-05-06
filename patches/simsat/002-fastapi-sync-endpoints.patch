@@ -1,0 +1,40 @@
+diff --git a/src/sim/api.py b/src/sim/api.py
+index 5940259..fb846c6 100644
+--- a/src/sim/api.py
++++ b/src/sim/api.py
+@@ -64,7 +64,7 @@ async def get_metrics():
+ 
+ 
+ @api.get("/data/current/image/sentinel")
+-async def get_sentinel_image(
++def get_sentinel_image(
+     spectral_bands: List[str] = Query(default=["red", "green", "blue"]),
+     size_km: float = 5.0,
+     window_seconds: float = Query(default=10 * 24 * 60 * 60, gt=0),
+@@ -130,7 +130,7 @@ async def get_sentinel_image(
+         raise HTTPException(status_code=400, detail="Invalid return_type specified")
+ 
+ @api.get("/data/current/image/mapbox")
+-async def get_mapbox_image(
++def get_mapbox_image(
+     lon: Optional[float] = Query(default=None, description="Target longitude (defaults to current satellite longitude)", ge=-180, le=180),
+     lat: Optional[float] = Query(default=None, description="Target latitude (defaults to current satellite latitude)", ge=-90, le=90)
+ ):
+@@ -178,7 +178,7 @@ async def get_mapbox_image(
+ 
+ 
+ @api.get("/data/image/sentinel")
+-async def get_sentinel_image_lon_lat(
++def get_sentinel_image_lon_lat(
+     lon: float = Query(..., description="The longitude of the location", ge=-180, le=180),
+     lat: float = Query(..., description="The latitude of the location", ge=-90, le=90),
+     timestamp: str = Query(..., description="The timestamp of the image", format="date-time"),
+@@ -239,7 +239,7 @@ async def get_sentinel_image_lon_lat(
+ 
+ 
+ @api.get("/data/image/mapbox")
+-async def get_mapbox_image_lon_lat(
++def get_mapbox_image_lon_lat(
+     lon_target: float = Query(..., description="The longitude of the target location", ge=-180, le=180),
+     lat_target: float = Query(..., description="The latitude of the target location", ge=-90, le=90),
+     lon_satellite: float = Query(..., description="The longitude of the satellite", ge=-180, le=180),
