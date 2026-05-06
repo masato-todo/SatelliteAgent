@@ -1,0 +1,106 @@
+# SatelliteAgent — model server compose (GPU services only).
+#
+# The Python app server (port 7860) runs OUTSIDE Docker via
+#   uv run python -m app.server
+# because it needs the local .venv and reads ./data and config/.
+# This compose file only manages the two GPU model servers, which are
+# easier to ship as containers (they pin specific CUDA / transformers
+# versions and need a custom vLLM patch).
+#
+# Required env vars (set in .env at repo root, or export inline):
+#
+#   WILDFIRE_MODEL_DIR    Host path containing {base,adapter} subdirs of
+#                         the LFM2.5-VL-450M wildfire LoRA staging.
+#                         Default: ./models/wildfire-staging
+#                         (You can mirror it from huggingface:
+#                          LiquidAI/LFM2.5-VL-450M  → models/wildfire-staging/base
+#                          YujiYamaguchi/lfm2-5-vl-450m-wildfire → models/wildfire-staging/adapter)
+#
+#   LFM2_AGENT_MODEL_DIR  Host path to the LFM2.5-VL-450M-sft-grpo
+#                         checkpoint.
+#                         Default: ./models/LFM2.5-VL-450M-sft-grpo
+#
+#   HF_CACHE_DIR          Optional. HuggingFace cache passthrough so the
+#                         container reuses already-downloaded weights.
+#                         Default: ~/.cache/huggingface
+#
+# Quickstart:
+#
+#   docker compose up -d        # builds + starts both GPU services
+#   docker compose logs -f      # tail logs
+#   docker compose down         # stop and remove containers
+#
+# Then in another shell:
+#
+#   uv run python -m app.server # the app on http://localhost:7860
+#
+# SimSat (port 9005) is OPTIONAL — see patches/simsat/README.md.
+# Once it is set up under vendor/SimSat, you can also bring it up with:
+#   docker compose -f vendor/SimSat/docker-compose.yaml up -d sim
+# (or set SIMSAT_API_URL in .env to a remote instance and skip local sim).
+
+services:
+  lfm-wildfire:
+    build:
+      context: ./serve_lfm
+      dockerfile: Dockerfile
+    image: satelliteagent/wildfire:latest
+    container_name: lfm-wildfire
+    restart: unless-stopped
+    ports:
+      - "8085:8000"
+    environment:
+      LFM_BASE_DIR:    /models/base
+      LFM_ADAPTER_DIR: /models/adapter
+      LFM_MODEL_NAME:  lfm2.5-vl-450m-wildfire
+      LFM_DEVICE:      cuda
+    volumes:
+      - "${WILDFIRE_MODEL_DIR:-./models/wildfire-staging}:/models:ro"
+      - "${HF_CACHE_DIR:-${HOME}/.cache/huggingface}:/cache/huggingface"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  lfm2-agent:
+    build:
+      context: .
+      dockerfile: serve_lfm2/Dockerfile
+    image: satelliteagent/lfm2-agent:cu130
+    container_name: lfm2-agent
+    restart: unless-stopped
+    ports:
+      - "8086:8000"
+    shm_size: 2g
+    volumes:
+      - "${LFM2_AGENT_MODEL_DIR:-./models/LFM2.5-VL-450M-sft-grpo}:/model:ro"
+    command:
+      - "--model"
+      - "/model"
+      - "--served-model-name"
+      - "LFM2.5-VL-450M-sft-grpo"
+      - "--port"
+      - "8000"
+      - "--host"
+      - "0.0.0.0"
+      - "--gpu-memory-utilization"
+      - "0.5"
+      - "--max-model-len"
+      - "4096"
+      - "--enforce-eager"
+      - "--trust-remote-code"
+      - "--enable-auto-tool-choice"
+      - "--tool-parser-plugin"
+      - "/agent/lfm2_tool_parser.py"
+      - "--tool-call-parser"
+      - "lfm2_pythonic"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

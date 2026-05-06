@@ -28,14 +28,27 @@ uv sync --extra simsat --extra geo
 
 ## 必要な 3 サービス
 
-| サーバ | port | 役割 | 起動方法 |
-|---|---:|---|---|
-| **SimSat** | 9005 | Sentinel-2 mock backend (lat/lon/timestamp → S2 image) | `cd vendor/SimSat && docker compose up -d sim` (パッチ適用要、`docs/REPRO_PLAN.md` Phase 3.3) |
-| **wildfire LoRA** | 8085 | `detect_wildfire` ツールが叩く FireEdge LoRA (transformers + peft) | `cd serve_lfm && docker compose up -d` |
-| **LFM2 agent vLLM** | 8086 | 学習済 LFM2.5-VL-450M-sft-grpo (Run Agent の "lfm25_vl_sft_grpo" provider) | `MODEL_PATH=/path/to/checkpoint scripts/serve_vllm_lfm2.sh` |
+| サーバ | port | 役割 |
+|---|---:|---|
+| **SimSat** | 9005 | Sentinel-2 mock backend (lat/lon/timestamp → S2 image) — `vendor/SimSat` をクローンしてパッチ適用、`patches/simsat/README.md` 参照 |
+| **wildfire LoRA** | 8085 | `detect_wildfire` ツールが叩く FireEdge LoRA (transformers + peft) |
+| **LFM2 agent vLLM** | 8086 | 学習済 LFM2.5-VL-450M-sft-grpo (Run Agent の `lfm25_vl_sft_grpo` provider) |
 
-(局所 vLLM 1.6B を Run Agent 既定 provider で使う場合は port 8002 にも別途立てる。
-詳細は `docs/INTEGRATION_LFM2VL.md`。学習済 GRPO model だけ使うなら不要。)
+LoRA + vLLM の 2 つはルートの `docker-compose.yaml` でまとめて立てられる:
+
+```bash
+# 必須 env を .env に書く (or 同コマンドの直前で export)
+echo "WILDFIRE_MODEL_DIR=$HOME/path/to/wildfire-staging"  >> .env
+echo "LFM2_AGENT_MODEL_DIR=$HOME/path/to/sft-grpo-ckpt" >> .env
+
+docker compose up -d              # build + 起動 (~5 分)
+docker compose logs -f lfm2-agent # vLLM の load 完了待ち
+```
+
+詳細は `docker-compose.yaml` 上部のコメントと `serve_lfm2/Dockerfile`、`docs/INTEGRATION_LFM2VL.md` 参照。
+
+(任意: Settings ⚙ で **Gemini を使う場合は `GOOGLE_API_KEY` を `.env` に**。
+ローカル vLLM 1.6B も別途使いたい場合は port 8002 に立てる、これは `config/providers.yaml` の `lfm25_vl_local` 既定エントリ。)
 
 ## アプリ起動
 
