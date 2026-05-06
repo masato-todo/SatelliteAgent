@@ -362,7 +362,7 @@ def chat_complete(
         return json.loads(r.read())
 
 
-def run_lfm2_agent(
+def iter_lfm2_agent(
     case_id: str,
     *,
     case_meta: dict,
@@ -375,21 +375,31 @@ def run_lfm2_agent(
     include_images: bool = False,
     max_turns: int = 6,
     temperature: float = 0.0,
-) -> dict:
-    """Run the multi-turn agent loop until terminal action or max_turns.
+):
+    """Generator version of the multi-turn agent loop.
 
-    Returns:
-        {
-            "terminal": "submit_to_ground" | "drop" | "max_turns_exceeded",
-            "tool_call_log": [{"name": str, "args": dict}, ...],
-            "raw_log": [{"turn": int, "finish": str, "n_tool_calls": int, ...}, ...],
-            "messages": full message history,
-        }
+    Yields events in the same shape as agent/react_loop_openai.py emits,
+    so /api/run_agent's SSE pipeline can stream them directly:
+
+        {"type": "thought", "text": "..."}
+        {"type": "action",  "name": "tool", "arguments": {...}}
+        {"type": "observation", "name": "tool", "result": <parsed>}
+        {"type": "final",   "name": <terminal>, "result": {...}}
+        {"type": "error",   "text": "..."}        # on chat error
+
+    On StopIteration (i.e. when iteration completes normally), returns the
+    same dict shape `run_lfm2_agent` used to produce, so the legacy POST
+    endpoint can keep working unchanged.
     """
     messages = initial_messages(before_path, after_path, include_images=include_images)
-    terminal = None
+    terminal: str | None = None
     tool_call_log: list[dict] = []
     raw_log: list[dict] = []
+
+    yield {
+        "type": "thought",
+        "text": f"LFM2.5-VL multi-turn agent · {served_model} · case={case_id}",
+    }
 
     for turn in range(max_turns):
         try:
@@ -400,6 +410,9 @@ def run_lfm2_agent(
         except Exception as e:
             terminal = f"HTTP_ERR_{type(e).__name__}"
             raw_log.append({"turn": turn, "error": str(e)})
+            yield {"type": "error",
+                   "text": f"chat completion failed at turn {turn}: "
+                           f"{type(e).__name__}: {e}"}
             break
 
         msg = resp["choices"][0]["message"]
@@ -434,6 +447,10 @@ def run_lfm2_agent(
             fargs = {}
         tool_call_log.append({"name": fname, "args": fargs})
 
+        # Emit action event the moment the model commits to a tool call,
+        # before we execute the tool. This is what makes the UI feel live.
+        yield {"type": "action", "name": fname, "arguments": fargs}
+
         if fname in TERMINAL_TOOLS:
             terminal = fname
             break
@@ -446,13 +463,38 @@ def run_lfm2_agent(
             "name": fname,
             "content": str(obs),
         })
+        try:
+            parsed = json.loads(obs) if isinstance(obs, str) else obs
+        except Exception:
+            parsed = obs
+        yield {"type": "observation", "name": fname, "result": parsed}
 
     if terminal is None:
         terminal = "max_turns_exceeded"
 
-    return {
-        "terminal": terminal,
-        "tool_call_log": tool_call_log,
-        "raw_log": raw_log,
-        "messages": messages,
+    yield {
+        "type": "final",
+        "name": terminal,
+        "result": {"raw_log": raw_log, "scene_id": case_id},
     }
+    return {
+        "terminal":      terminal,
+        "tool_call_log": tool_call_log,
+        "raw_log":       raw_log,
+        "messages":      messages,
+    }
+
+
+def run_lfm2_agent(*args, **kwargs) -> dict:
+    """Backward-compat wrapper: drains iter_lfm2_agent and returns the
+    same dict shape that pre-streaming callers (POST /api/run_lfm2_agent,
+    eval scripts) expect."""
+    gen = iter_lfm2_agent(*args, **kwargs)
+    try:
+        while True:
+            next(gen)
+    except StopIteration as stop:
+        return stop.value or {
+            "terminal": "max_turns_exceeded",
+            "tool_call_log": [], "raw_log": [], "messages": [],
+        }

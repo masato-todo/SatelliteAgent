@@ -1611,13 +1611,11 @@ def _save_agent_trace(scene_id: str, events: list[dict], provider: str | None,
 def _run_lfm2_as_events(scene_id: str, base_url: str,
                          served_model: str | None,
                          before_path: Path, after_path: Path):
-    """Run agent.lfm2_agent.run_lfm2_agent and yield events compatible with
-    the openai_compat / gemini SSE protocol so the UI renders identically.
-
-    Currently NOT a true stream — the loop runs to completion before any
-    event is emitted (REPRO_PLAN.md Phase 7 tracks the streaming refactor).
+    """Look up the case, then delegate straight to agent.lfm2_agent's
+    streaming generator. Each tool_call / observation reaches the SSE
+    consumer the moment it happens (no longer "after-the-fact replay").
     """
-    from agent.lfm2_agent import run_lfm2_agent
+    from agent.lfm2_agent import iter_lfm2_agent
 
     cid = scene_id
     if not all(c.isalnum() or c in "_+-" for c in cid):
@@ -1636,46 +1634,12 @@ def _run_lfm2_as_events(scene_id: str, base_url: str,
         "size_km":     float(case.get("size_km", 10.0)),
     }
     served = served_model or os.environ.get("LFM2_AGENT_MODEL", "LFM2.5-VL-450M-sft-grpo")
-    yield {
-        "type": "thought",
-        "text": f"LFM2.5-VL multi-turn agent · {served} · case={cid}",
-    }
-    result = run_lfm2_agent(
+    yield from iter_lfm2_agent(
         case_id=cid, case_meta=case_meta,
         before_path=str(before_path), after_path=str(after_path),
         vllm_url=base_url, served_model=served,
         include_images=False, max_turns=6, temperature=0.0,
     )
-
-    # Pull observations out of role="tool" messages, in order, so we can
-    # interleave them with the action log (mirrors runLfm2Agent JS logic
-    # we are replacing).
-    observations: list[dict[str, Any]] = []
-    for m in result.get("messages") or []:
-        if isinstance(m, dict) and m.get("role") == "tool":
-            observations.append({"name": m.get("name"), "content": m.get("content")})
-
-    obs_idx = 0
-    for tc in result.get("tool_call_log") or []:
-        yield {"type": "action", "name": tc.get("name"),
-               "arguments": tc.get("args") or {}}
-        # Terminal tools (submit_to_ground / drop) have no observation.
-        if tc.get("name") in ("submit_to_ground", "drop"):
-            continue
-        if obs_idx < len(observations):
-            o = observations[obs_idx]; obs_idx += 1
-            content = o.get("content")
-            try:
-                parsed = json.loads(content) if isinstance(content, str) else content
-            except Exception:
-                parsed = content
-            yield {"type": "observation", "name": o.get("name"), "result": parsed}
-
-    yield {
-        "type": "final",
-        "name": result.get("terminal"),
-        "result": {"raw_log": result.get("raw_log") or [], "scene_id": cid},
-    }
 
 
 @app.get("/api/run_agent")
