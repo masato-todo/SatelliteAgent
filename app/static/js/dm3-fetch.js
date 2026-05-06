@@ -15,10 +15,16 @@ export async function loadDM3Cases() {
     sel.innerHTML = '<option value="">— none —</option>';
 
     const cases = data.cases || [];
-    const negativeCases = cases.filter(c => c.is_negative);
-    const catalogCases  = cases.filter(c => c.source === "MCD64A1");
-    const preciseCases  = cases.filter(c => c.precise && !c.is_negative && c.source !== "MCD64A1");
-    const coarseCases   = cases.filter(c => !c.precise && !c.is_negative && c.source !== "MCD64A1");
+    const hardNegCases      = cases.filter(c => c.is_hard_negative);
+    const negativeCases     = cases.filter(c => c.is_negative && !c.is_hard_negative);
+    const volcanicCases     = cases.filter(c => c.source === "GDACS_VO");
+    const deforestationCases = cases.filter(c => c.source === "PRODES");
+    const habCases          = cases.filter(c => c.source === "HAB");
+    const emsCases          = cases.filter(c => c.source === "EMS");
+    const catalogCases      = cases.filter(c => c.source === "MCD64A1");
+    const otherSrc = c => c.source !== "MCD64A1" && c.source !== "EMS" && c.source !== "GDACS_VO" && c.source !== "PRODES" && c.source !== "HAB" && c.source !== "HARD_NEG";
+    const preciseCases  = cases.filter(c => c.precise && !c.is_negative && otherSrc(c));
+    const coarseCases   = cases.filter(c => !c.precise && !c.is_negative && otherSrc(c));
 
     const makeOption = (c, i) => {
       const opt = document.createElement("option");
@@ -53,11 +59,41 @@ export async function loadDM3Cases() {
       catalogCases.forEach(c => grpM.appendChild(makeOption(c, cases.indexOf(c))));
       sel.appendChild(grpM);
     }
+    if (emsCases.length) {
+      const grpE = document.createElement("optgroup");
+      grpE.label = "🌊 EMS — Copernicus rapid mapping (flood / storm / quake / landslide)";
+      emsCases.forEach(c => grpE.appendChild(makeOption(c, cases.indexOf(c))));
+      sel.appendChild(grpE);
+    }
+    if (volcanicCases.length) {
+      const grpV = document.createElement("optgroup");
+      grpV.label = "🌋 Volcanic — GDACS eruption events (lava / ash, SWIR signal)";
+      volcanicCases.forEach(c => grpV.appendChild(makeOption(c, cases.indexOf(c))));
+      sel.appendChild(grpV);
+    }
+    if (deforestationCases.length) {
+      const grpD = document.createElement("optgroup");
+      grpD.label = "🌳 Deforestation — PRODES Amazon clearings (NDVI / NBR drop)";
+      deforestationCases.forEach(c => grpD.appendChild(makeOption(c, cases.indexOf(c))));
+      sel.appendChild(grpD);
+    }
+    if (habCases.length) {
+      const grpH = document.createElement("optgroup");
+      grpH.label = "🟢 Algal bloom — harmful algal blooms / red tide (NDCI, RGB color)";
+      habCases.forEach(c => grpH.appendChild(makeOption(c, cases.indexOf(c))));
+      sel.appendChild(grpH);
+    }
     if (negativeCases.length) {
       const grpN = document.createElement("optgroup");
       grpN.label = "⊘ NEGATIVE — drop expected (no_change / cloud_blocked / random)";
       negativeCases.forEach(c => grpN.appendChild(makeOption(c, cases.indexOf(c))));
       sel.appendChild(grpN);
+    }
+    if (hardNegCases.length) {
+      const grpHN = document.createElement("optgroup");
+      grpHN.label = "🛑 HARD NEGATIVE — drop at positive sites in stable years (forest/volcano/pre-burn)";
+      hardNegCases.forEach(c => grpHN.appendChild(makeOption(c, cases.indexOf(c))));
+      sel.appendChild(grpHN);
     }
   } catch (e) {
     console.error("DM3 load failed", e);

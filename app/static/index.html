@@ -130,6 +130,7 @@
         <div class="a-row">
           <button class="tool-btn" data-tool="get_change_stats" title="Computes ALL spectral index deltas (NBR/NDVI/MNDWI/NDBI) and returns mean/median/std/min/max/percentiles + strong↓↑ fractions. Pure data — agent decides class.">get_change_stats</button>
           <button class="tool-btn" data-tool="classify_change" title="VLM-based: uses the provider+model selected above.">classify_change (VLM)</button>
+          <button class="tool-btn" data-tool="detect_wildfire" title="Single-image wildfire detector (LFM2.5-VL-450M-wildfire LoRA via :8085). Builds SWIR22-SWIR16-NIR false-color of the AFTER pass and asks the FireEdge model.">detect_wildfire 🔥</button>
           <button class="tool-btn" data-tool="get_region_info">get_region_info</button>
         </div>
       </div>
@@ -239,6 +240,7 @@
         <span id="mode-badge" class="mode-agent">AGENT</span>
         <span class="ph-spacer"></span>
         <button id="run-btn" class="ph-action primary">Run Agent</button>
+        <button id="run-lfm2-btn" class="ph-action" title="Run the LFM2.5-VL-450M-sft-grpo multi-turn agent (S64 checkpoint, vLLM on :8086). Single-shot — no streaming.">Run LFM2 Agent</button>
         <button id="trace-clear-btn" class="ph-action" title="Clear the trace currently shown in this panel (does not delete saved files)">Clear</button>
         <button id="traces-list-btn" class="ph-action" title="View saved traces (read / delete)">📂 Traces</button>
         <button id="annotate-btn" class="ph-action">● Start Recording</button>

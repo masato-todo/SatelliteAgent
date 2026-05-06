@@ -42,6 +42,7 @@ from tools.spectral import (
     make_compute_index,
     make_compute_index_delta,
 )
+from tools.wildfire import make_detect_wildfire
 from tools.scorer import make_get_change_stats
 from tools.quality import assess_image_quality_impl, STATS_SCHEMA
 from tools.classifier_gemini import make_classify_change as make_classify_change_gemini
@@ -138,6 +139,7 @@ def build_tool_registry(before_path: str, after_path: str,
         reg["compute_index"]       = make_compute_index(**context)
         reg["compute_index_delta"] = make_compute_index_delta(**context)
         reg["get_change_stats"]    = make_get_change_stats(**context)
+        reg["detect_wildfire"]     = make_detect_wildfire(**context)
     return reg
 
 
@@ -576,10 +578,252 @@ def _load_negative_cases() -> list[dict[str, Any]]:
     return out
 
 
-DM3_CASES: list[dict[str, Any]] = _load_dm3_cases() + _load_negative_cases()
-_n_pos = sum(1 for c in DM3_CASES if not c.get("is_negative"))
-_n_neg = sum(1 for c in DM3_CASES if c.get("is_negative"))
-print(f"[startup] DisasterM3 cases loaded: {len(DM3_CASES)} (positive/neutral={_n_pos}, negative={_n_neg})")
+def _load_ems_cases() -> list[dict[str, Any]]:
+    """Load Copernicus EMS Rapid Mapping cases (positive, expected_action=submit_to_ground).
+    Schema mirrors `_load_negative_cases`. File is optional.
+    """
+    path = APP_DIR.parent / "data" / "metadata" / "disaster_m3" / "ems_cases.yaml"
+    if not path.exists():
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+    except Exception as e:
+        print(f"[startup] WARN: failed to load ems_cases.yaml: {e}")
+        return []
+    raw_cases = doc.get("cases", []) if isinstance(doc, dict) else []
+    out: list[dict[str, Any]] = []
+    for r in raw_cases:
+        try:
+            lat = float(r["lat"]); lon = float(r["lon"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        size_km = float(r.get("size_km", 50.0))
+        before_date = r["before_date"]
+        after_date  = r["after_date"]
+        countries = r.get("countries") or []
+        loc = ", ".join(countries) if countries else (r.get("name") or "")
+        out.append({
+            "id":              r["id"],
+            "source":          "EMS",
+            "event":           r.get("ems_code") or r["id"],
+            "disaster_type":   r.get("event_type", "other"),
+            "mapped_class":    r.get("event_type", "other"),
+            "expected_action": r.get("expected_action", "submit_to_ground"),
+            "ems_code":        r.get("ems_code"),
+            "ems_category":    r.get("category"),
+            "name":            r.get("name"),
+            "countries":       countries,
+            "capture_date":    after_date,
+            "after_date":      after_date,
+            "before_date":     before_date,
+            "lat": lat, "lon": lon,
+            "location":        loc,
+            "image":           "",
+            "size_km":         size_km,
+            "precise":         False,
+            "is_ems":          True,
+        })
+    return out
+
+
+def _load_volcanic_cases() -> list[dict[str, Any]]:
+    """Load GDACS volcanic event cases (positive, expected_action=submit_to_ground)."""
+    path = APP_DIR.parent / "data" / "metadata" / "disaster_m3" / "volcanic_cases.yaml"
+    if not path.exists():
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+    except Exception as e:
+        print(f"[startup] WARN: failed to load volcanic_cases.yaml: {e}")
+        return []
+    raw_cases = doc.get("cases", []) if isinstance(doc, dict) else []
+    out: list[dict[str, Any]] = []
+    for r in raw_cases:
+        try:
+            lat = float(r["lat"]); lon = float(r["lon"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        size_km = float(r.get("size_km", 10.0))
+        before_date = r["before_date"]
+        after_date  = r["after_date"]
+        loc = r.get("country") or r.get("name") or ""
+        out.append({
+            "id":              r["id"],
+            "source":          "GDACS_VO",
+            "event":           r.get("name") or r["id"],
+            "disaster_type":   "volcanic",
+            "mapped_class":    "volcanic",
+            "expected_action": r.get("expected_action", "submit_to_ground"),
+            "alertlevel":      r.get("alertlevel"),
+            "name":            r.get("name"),
+            "country":         r.get("country"),
+            "capture_date":    after_date,
+            "after_date":      after_date,
+            "before_date":     before_date,
+            "lat": lat, "lon": lon,
+            "location":        loc,
+            "image":           "",
+            "size_km":         size_km,
+            "precise":         False,
+            "is_volcanic":     True,
+        })
+    return out
+
+
+def _load_deforestation_cases() -> list[dict[str, Any]]:
+    """Load PRODES deforestation cases (positive, expected_action=submit_to_ground)."""
+    path = APP_DIR.parent / "data" / "metadata" / "disaster_m3" / "deforestation_cases.yaml"
+    if not path.exists():
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+    except Exception as e:
+        print(f"[startup] WARN: failed to load deforestation_cases.yaml: {e}")
+        return []
+    raw_cases = doc.get("cases", []) if isinstance(doc, dict) else []
+    out: list[dict[str, Any]] = []
+    for r in raw_cases:
+        try:
+            lat = float(r["lat"]); lon = float(r["lon"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        size_km = float(r.get("size_km", 10.0))
+        before_date = r["before_date"]
+        after_date  = r["after_date"]
+        loc = f"Brazil/{r.get('state','?')}"
+        out.append({
+            "id":              r["id"],
+            "source":          "PRODES",
+            "event":           r.get("name") or r["id"],
+            "disaster_type":   "deforestation",
+            "mapped_class":    "deforestation",
+            "expected_action": r.get("expected_action", "submit_to_ground"),
+            "area_km2":        r.get("area_km2"),
+            "year":            r.get("year"),
+            "state":           r.get("state"),
+            "name":            r.get("name"),
+            "country":         "Brazil",
+            "capture_date":    after_date,
+            "after_date":      after_date,
+            "before_date":     before_date,
+            "lat": lat, "lon": lon,
+            "location":        loc,
+            "image":           "",
+            "size_km":         size_km,
+            "precise":         False,
+            "is_deforestation": True,
+        })
+    return out
+
+
+def _load_algal_bloom_cases() -> list[dict[str, Any]]:
+    """Load hand-curated harmful algal bloom cases."""
+    path = APP_DIR.parent / "data" / "metadata" / "disaster_m3" / "algal_bloom_cases.yaml"
+    if not path.exists():
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+    except Exception as e:
+        print(f"[startup] WARN: failed to load algal_bloom_cases.yaml: {e}")
+        return []
+    raw_cases = doc.get("cases", []) if isinstance(doc, dict) else []
+    out: list[dict[str, Any]] = []
+    for r in raw_cases:
+        try:
+            lat = float(r["lat"]); lon = float(r["lon"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        size_km = float(r.get("size_km", 20.0))
+        before_date = r["before_date"]
+        after_date  = r["after_date"]
+        loc = f"{r.get('country','?')}/{r.get('region','?')}"
+        out.append({
+            "id":              r["id"],
+            "source":          "HAB",
+            "event":           r.get("name") or r["id"],
+            "disaster_type":   "algal_bloom",
+            "mapped_class":    "algal_bloom",
+            "expected_action": r.get("expected_action", "submit_to_ground"),
+            "species":         r.get("species"),
+            "bloom_color":     r.get("bloom_color"),
+            "name":            r.get("name"),
+            "region":          r.get("region"),
+            "country":         r.get("country"),
+            "notes":           r.get("notes"),
+            "capture_date":    after_date,
+            "after_date":      after_date,
+            "before_date":     before_date,
+            "lat": lat, "lon": lon,
+            "location":        loc,
+            "image":           "",
+            "size_km":         size_km,
+            "precise":         False,
+            "is_algal_bloom":  True,
+        })
+    return out
+
+
+def _load_hard_negative_cases() -> list[dict[str, Any]]:
+    """Load HARD NEGATIVE cases — same lat/lon as positive sources but in
+    stable (pre-event) periods. Behaves like negative but flagged separately
+    so UI can show them in their own optgroup."""
+    path = APP_DIR.parent / "data" / "metadata" / "disaster_m3" / "hard_negative_cases.yaml"
+    if not path.exists():
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+    except Exception as e:
+        print(f"[startup] WARN: failed to load hard_negative_cases.yaml: {e}")
+        return []
+    raw_cases = doc.get("cases", []) if isinstance(doc, dict) else []
+    out: list[dict[str, Any]] = []
+    for r in raw_cases:
+        try:
+            lat = float(r["lat"]); lon = float(r["lon"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        size_km = float(r.get("size_km", 10.0))
+        before_date = r["before_date"]
+        after_date  = r["after_date"]
+        out.append({
+            "id":              r["id"],
+            "source":          "HARD_NEG",
+            "event":           r.get("parent_id") or r["id"],
+            "disaster_type":   r.get("negative_type", "no_change"),
+            "mapped_class":    "no_change",
+            "expected_action": r.get("expected_action", "drop"),
+            "negative_type":   r.get("negative_type"),
+            "parent_source":   r.get("parent_source"),
+            "parent_id":       r.get("parent_id"),
+            "biome":           r.get("biome"),
+            "capture_date":    after_date,
+            "after_date":      after_date,
+            "before_date":     before_date,
+            "lat": lat, "lon": lon,
+            "location":        r.get("note", ""),
+            "image":           "",
+            "size_km":         size_km,
+            "precise":         False,
+            "is_negative":     True,
+            "is_hard_negative": True,
+        })
+    return out
+
+
+DM3_CASES: list[dict[str, Any]] = _load_dm3_cases() + _load_negative_cases() + _load_hard_negative_cases() + _load_ems_cases() + _load_volcanic_cases() + _load_deforestation_cases() + _load_algal_bloom_cases()
+_n_pos = sum(1 for c in DM3_CASES if not any(c.get(f) for f in ("is_negative","is_ems","is_volcanic","is_deforestation","is_algal_bloom")))
+_n_neg     = sum(1 for c in DM3_CASES if c.get("is_negative") and not c.get("is_hard_negative"))
+_n_hardneg = sum(1 for c in DM3_CASES if c.get("is_hard_negative"))
+_n_ems = sum(1 for c in DM3_CASES if c.get("is_ems"))
+_n_vol = sum(1 for c in DM3_CASES if c.get("is_volcanic"))
+_n_def = sum(1 for c in DM3_CASES if c.get("is_deforestation"))
+_n_hab = sum(1 for c in DM3_CASES if c.get("is_algal_bloom"))
+print(f"[startup] DisasterM3 cases loaded: {len(DM3_CASES)} (positive/neutral={_n_pos}, negative={_n_neg}, hard_negative={_n_hardneg}, ems={_n_ems}, volcanic={_n_vol}, deforestation={_n_def}, hab={_n_hab})")
 
 
 def _load_scene_catalog() -> list[dict[str, Any]]:
@@ -1224,6 +1468,115 @@ class ToolInvokeRequest(BaseModel):
     arguments: dict[str, Any] = {}
     provider: str | None = None
     model: str | None = None
+
+
+class RunLfm2AgentRequest(BaseModel):
+    """Drive agent.lfm2_agent.run_lfm2_agent with a curated case_id.
+
+    Looks up the case in canonical_dataset.yaml (or a prebuilt curated_pair
+    directory) so the front-end only has to pass the case_id.
+    """
+    scene_id: str
+    include_images: bool = False  # 75% accuracy mode (S63 finding)
+    max_turns: int = 6
+    temperature: float = 0.0
+    vllm_url: str | None = None
+    served_model: str | None = None
+    precompute_root: str | None = None
+
+
+@app.post("/api/run_lfm2_agent")
+def api_run_lfm2_agent(req: RunLfm2AgentRequest) -> dict[str, Any]:
+    """Run the LFM2.5-VL multi-turn SFT/GRPO agent on one case.
+
+    Wires the case_id → curated_pairs/<id>/{before,after}.png + the offline
+    precompute cache, then invokes agent.lfm2_agent.run_lfm2_agent.
+    Returns the terminal action and tool-call log so the UI can render it
+    the same way the Gemini ReAct agent's traces are rendered.
+    """
+    from agent.lfm2_agent import run_lfm2_agent
+    cid = req.scene_id
+    if not all(c.isalnum() or c in "_+-" for c in cid):
+        raise HTTPException(400, "invalid scene_id")
+    repo_root = APP_DIR.parent
+    curated   = repo_root / "data" / "curated_pairs" / cid
+    before_p  = curated / "before.png"
+    after_p   = curated / "after.png"
+    have_pair = before_p.exists() and after_p.exists()
+
+    # Build case_meta (lat/lon/dates/size_km) so tools.spectral.compute_index_delta_impl
+    # can be called live by the agent. MCD64A1 cases live in scene_catalog
+    # (re-read each call), the rest in DM3_CASES (loaded at startup).
+    case = next((c for c in DM3_CASES + _load_scene_catalog() if c.get("id") == cid), None)
+    if case is None:
+        raise HTTPException(404, f"scene_id not found in DM3 catalog: {cid}")
+    case_meta = {
+        "lat":         float(case["lat"]),
+        "lon":         float(case["lon"]),
+        "before_date": case.get("before_date"),
+        "after_date":  case.get("after_date"),
+        "size_km":     float(case.get("size_km", 10.0)),
+    }
+    if not (case_meta["before_date"] and case_meta["after_date"]):
+        raise HTTPException(400, f"case missing before_date/after_date: {cid}")
+
+    vllm_url     = req.vllm_url     or os.environ.get("LFM2_AGENT_VLLM_URL", "http://localhost:8086/v1")
+    served_model = req.served_model or os.environ.get("LFM2_AGENT_MODEL", "LFM2.5-VL-450M-sft-grpo")
+
+    try:
+        result = run_lfm2_agent(
+            case_id=cid,
+            case_meta=case_meta,
+            before_path=str(before_p) if have_pair else None,
+            after_path=str(after_p)   if have_pair else None,
+            vllm_url=vllm_url,
+            served_model=served_model,
+            include_images=req.include_images,
+            max_turns=req.max_turns,
+            temperature=req.temperature,
+        )
+    except Exception as e:
+        raise HTTPException(500, f"run_lfm2_agent failed: {type(e).__name__}: {e}")
+
+    # Strip any large message bodies before returning to the browser, and
+    # extract observations (role="tool" messages) so the UI can interleave
+    # them with the action log.
+    msgs_compact: list[dict[str, Any]] = []
+    observations: list[dict[str, Any]] = []
+    for m in result.get("messages") or []:
+        if not isinstance(m, dict):
+            msgs_compact.append(m)
+            continue
+        c = m.get("content")
+        if isinstance(c, list):
+            scrubbed = []
+            for part in c:
+                if isinstance(part, dict) and part.get("type") == "image_url":
+                    scrubbed.append({"type": "image_url", "image_url": {"url": "<stripped>"}})
+                else:
+                    scrubbed.append(part)
+            msgs_compact.append({"role": m.get("role"), "content": scrubbed})
+        else:
+            msgs_compact.append(m)
+        if m.get("role") == "tool":
+            observations.append({
+                "name": m.get("name"),
+                "tool_call_id": m.get("tool_call_id"),
+                "content": m.get("content"),
+            })
+
+    return {
+        "scene_id":       cid,
+        "terminal":       result.get("terminal"),
+        "tool_call_log":  result.get("tool_call_log") or [],
+        "observations":   observations,
+        "raw_log":        result.get("raw_log") or [],
+        "messages":       msgs_compact,
+        "vllm_url":       vllm_url,
+        "served_model":   served_model,
+        "case_meta":      case_meta,
+        "include_images": req.include_images,
+    }
 
 
 @app.get("/api/providers")

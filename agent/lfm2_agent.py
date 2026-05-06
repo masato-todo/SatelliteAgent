@@ -152,6 +152,89 @@ def case_features(precompute_root: str, case_id: str):
     return deltas
 
 
+# Mirror of build_precompute_v2 — fetch all bands once per side, then
+# compute every index locally with numpy. Cuts SimSat round-trips from
+# 12 (6 indices × 2 sides) to 2.
+_REALTIME_BANDS = ["nir", "red", "green", "swir16", "swir22"]
+_REALTIME_INDEX_DEFS = {
+    "NDVI":  ("nir",    "red"),
+    "NDWI":  ("green",  "nir"),
+    "MNDWI": ("green",  "swir16"),
+    "NBR":   ("nir",    "swir22"),
+    "NDBI":  ("swir16", "nir"),
+    "NDSI":  ("green",  "swir16"),
+}
+
+
+def _stats_of_delta(delta: "np.ndarray") -> dict:
+    """Same shape as precompute_v2: min/max/mean/median + frac_* with ±0.2 cutoff."""
+    import numpy as np
+    finite = delta[np.isfinite(delta)]
+    if finite.size == 0:
+        return {"min": None, "max": None, "mean": None, "median": None,
+                "frac_decrease_strong": 0.0, "frac_increase_strong": 0.0}
+    return {
+        "min":    float(finite.min()),
+        "max":    float(finite.max()),
+        "mean":   float(finite.mean()),
+        "median": float(np.median(finite)),
+        "frac_decrease_strong": float((delta < -0.2).sum() / delta.size),
+        "frac_increase_strong": float((delta >  0.2).sum() / delta.size),
+    }
+
+
+def realtime_case_features(case_meta: dict):
+    """Compute the same 6 indices live via SimSat + numpy.
+
+    One STAC fetch per side (5 bands), then 6 indices computed locally —
+    matches `scripts/build_precompute_v2.py:fetch_both_sides`.
+
+    Returns dict[index → delta_stats] (same shape as `case_features`).
+    """
+    import numpy as np
+    try:
+        from simsat_client.sentinel import fetch_sentinel_array, SimSatError
+    except Exception as e:
+        return {"_error": f"simsat_client import failed: {e}"}
+    lat = float(case_meta["lat"])
+    lon = float(case_meta["lon"])
+    bd  = case_meta["before_date"]
+    ad  = case_meta["after_date"]
+    size_km = float(case_meta.get("size_km", 10.0))
+    base_url = os.environ.get("SIMSAT_API_URL", "http://localhost:9005")
+
+    try:
+        sa_b = fetch_sentinel_array(lat=lat, lon=lon, timestamp=bd,
+                                     bands=_REALTIME_BANDS, size_km=size_km,
+                                     base_url=base_url, resolution_meters=10,
+                                     window_days=30, timeout=120)
+        sa_a = fetch_sentinel_array(lat=lat, lon=lon, timestamp=ad,
+                                     bands=_REALTIME_BANDS, size_km=size_km,
+                                     base_url=base_url, resolution_meters=10,
+                                     window_days=30, timeout=120)
+    except SimSatError as e:
+        return {"_error": f"SimSat fetch failed: {e}"}
+
+    ds_b = {name: sa_b.array[i] for i, name in enumerate(sa_b.band_names)}
+    ds_a = {name: sa_a.array[i] for i, name in enumerate(sa_a.band_names)}
+
+    def _idx(ds: dict, a: str, b: str):
+        a_arr = ds[a].astype(np.float32)
+        b_arr = ds[b].astype(np.float32)
+        denom = a_arr + b_arr
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return np.where(denom > 0, (a_arr - b_arr) / denom, np.nan)
+
+    deltas = {}
+    for idx, (a, b) in _REALTIME_INDEX_DEFS.items():
+        d = _idx(ds_a, a, b) - _idx(ds_b, a, b)
+        # Crop to common shape if SimSat returned slightly different sizes
+        if hasattr(d, "shape") and d.shape != _idx(ds_b, a, b).shape:
+            pass  # already aligned via subtraction; keep
+        deltas[idx] = _stats_of_delta(d)
+    return deltas
+
+
 def tags_of(feats: dict) -> dict[str, str]:
     """Convert raw spectral deltas to disaster-type binary tags (S50 style)."""
     nbr   = feats["NBR"]; ndvi  = feats["NDVI"]; ndwi  = feats["NDWI"]
@@ -185,12 +268,16 @@ def build_observation(feats: dict) -> str:
     )
 
 
-def execute_tool(name: str, args: dict, *, precompute_root: str, case_id: str) -> str:
-    """Execute one tool call. Returns observation string for the tool message."""
+def execute_tool(name: str, args: dict, *, case_meta: dict, case_id: str) -> str:
+    """Execute one tool call. Returns observation string for the tool message.
+
+    `case_meta` must carry lat/lon/before_date/after_date/size_km so we can
+    compute spectral deltas live from SimSat (no precompute YAML reads).
+    """
     if name == "compute_index_delta":
-        feats = case_features(precompute_root, case_id)
-        if feats is None:
-            return "error: precompute missing"
+        feats = realtime_case_features(case_meta)
+        if isinstance(feats, dict) and feats.get("_error"):
+            return f"error: realtime compute failed: {feats['_error']}"
         which = (args or {}).get("index", "all")
         if which == "all" or which is None:
             return build_observation(feats)
@@ -278,9 +365,10 @@ def chat_complete(
 def run_lfm2_agent(
     case_id: str,
     *,
+    case_meta: dict,
     before_path: str | None = None,
     after_path: str | None = None,
-    precompute_root: str,
+    precompute_root: str | None = None,  # accepted but unused (realtime-only)
     vllm_url: str = "http://localhost:8000/v1",
     served_model: str = "LFM2.5-VL-450M",
     api_key: str = "dummy",
@@ -350,8 +438,8 @@ def run_lfm2_agent(
             terminal = fname
             break
 
-        # Execute tool, append observation
-        obs = execute_tool(fname, fargs, precompute_root=precompute_root, case_id=case_id)
+        # Execute tool, append observation (realtime SimSat-backed)
+        obs = execute_tool(fname, fargs, case_meta=case_meta, case_id=case_id)
         messages.append({
             "role": "tool",
             "tool_call_id": tc.get("id", f"t{turn}"),
