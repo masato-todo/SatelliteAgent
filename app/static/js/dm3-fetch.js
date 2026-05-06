@@ -215,8 +215,23 @@ export async function loadTemplates() {
   $("simsat-url").textContent = data.simsat_url;
   const p = data.provider || { kind: "none", model: "?" };
   const el = $("provider-info");
-  el.textContent = p.kind === "gemini" ? `Gemini · ${p.model}` : "NO PROVIDER (set GOOGLE_API_KEY)";
-  el.className = p.kind === "gemini" ? "provider-gemini" : "provider-stub";
+  // Header reflects the resolved default provider (Settings dropdown can override).
+  // - gemini: needs GOOGLE_API_KEY at startup, or it surfaces as kind="none"
+  // - openai_compat: any local vLLM (e.g. lfm25_vl_local @ :8002)
+  // - lfm2_multiturn: trained 450M-sft-grpo via vLLM (:8086) — uses lfm2_agent loop
+  if (p.kind === "gemini") {
+    el.textContent = `Gemini · ${p.model}`;
+    el.className = "provider-gemini";
+  } else if (p.kind === "openai_compat") {
+    el.textContent = `${p.name || "vLLM"} · ${p.model}`;
+    el.className = "provider-vllm";
+  } else if (p.kind === "lfm2_multiturn") {
+    el.textContent = `${p.name || "lfm2_multiturn"} · ${p.model}`;
+    el.className = "provider-vllm";
+  } else {
+    el.textContent = "NO PROVIDER (check config/providers.yaml or .env)";
+    el.className = "provider-stub";
+  }
 }
 
 // ---- Fetch images ----
