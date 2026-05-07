@@ -49,6 +49,9 @@ else
 
 # Required by docker-compose.yaml — see scripts/download_models.sh
 # WILDFIRE_MODEL_DIR=./models/wildfire-staging
+# WILDFIRE_PRECURSOR_ADAPTER_DIR=./models/wildfire-precursor-staging/adapter
+# (WILDFIRE_PRECURSOR_BASE_DIR defaults to wildfire-staging/base — leave
+# alone unless the precursor uses a different base.)
 # LFM2_AGENT_MODEL_DIR=./models/sft-grpo
 EOF
     echo "  wrote .env (all keys commented out — uncomment as needed)"

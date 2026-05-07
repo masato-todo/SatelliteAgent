@@ -39,12 +39,13 @@ Open <http://localhost:7860>.
 | `scripts/smoke_test.sh` | アプリを bg で立ち上げて FireEdge fire case を fetch → `detect_wildfire` 呼び出し → `sentinel_datetime` 一致 + `fire_detected=true` を assert → アプリ kill。**起動用ではなく検証用** | **セットアップ後の動作確認**、コード変更後の regression check、CI |
 | `uv run python -m app.server` | アプリ本体起動 (foreground) | 普段使い |
 
-## 必要な 3 サービス
+## 必要なサービス
 
 | サーバ | port | 役割 | 立ち上げ |
 |---|---:|---|---|
 | **SimSat** | 9005 | Sentinel-2 mock backend (lat/lon/timestamp → S2 image) | `WITH_SIMSAT=1 ./setup.sh` (`patches/simsat/README.md` で詳細) |
-| **wildfire LoRA** | 8085 | `detect_wildfire` ツールが叩く FireEdge LoRA (transformers + peft) | `docker compose up -d lfm-wildfire` |
+| **wildfire LoRA** | 8085 | `detect_wildfire` ツールが叩く [FireEdge LoRA](https://huggingface.co/YujiYamaguchi/lfm2-5-vl-450m-wildfire) (transformers + peft) | `docker compose up -d lfm-wildfire` |
+| **wildfire-precursor LoRA** | 8089 | 火災 *前兆* (vegetation drying) を T-14/T-7 ペアから推定する [precursor LoRA](https://huggingface.co/YujiYamaguchi/lfm2-5-vl-450m-wildfire-precursor-pair14_7)。`scripts/eval_wildfire_precursor_*.py` 用 | `docker compose up -d lfm-precursor` |
 | **LFM2 agent vLLM** | 8086 | 学習済 [LFM2.5-VL-450M-sft-grpo](https://huggingface.co/todo1111/LFM2.5-VL-450M-sft-grpo-S64) (Run Agent の `lfm25_vl_sft_grpo` provider) | `docker compose up -d lfm2-agent` |
 
 `docker-compose.yaml` 上部のコメント、`services/agent/Dockerfile`、`docs/INTEGRATION_LFM2VL.md` も参照。

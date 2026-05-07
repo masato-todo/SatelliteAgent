@@ -44,6 +44,7 @@ from tools.spectral import (
     make_compute_index_delta,
 )
 from tools.wildfire import make_detect_wildfire
+from tools.wildfire_precursor import make_predict_wildfire
 from tools.scorer import make_get_change_stats
 from tools.quality import assess_image_quality_impl, STATS_SCHEMA
 from tools.region import make_get_region_info
@@ -199,6 +200,15 @@ def build_tool_registry(before_path: str, after_path: str,
         # scene the user sees on the map) so the LFM input matches what eval
         # at scripts/eval_wildfire_hf_simsat.py --use-sentinel-datetime sends.
         reg["detect_wildfire"] = make_detect_wildfire(
+            lat=ctx["lat"], lon=ctx["lon"], size_km=ctx["size_km"],
+            before_ts=before_actual or ctx["before_ts"],
+            after_ts=after_actual  or ctx["after_ts"],
+        )
+        # predict_wildfire is the precursor-LoRA tool: takes the cached
+        # Before (T-14) and After (T-7) and asks for HIGH/LOW fire risk.
+        # Same pinning rationale as detect_wildfire — the actual SimSat
+        # datetimes ensure refetch returns the same scene the map shows.
+        reg["predict_wildfire"] = make_predict_wildfire(
             lat=ctx["lat"], lon=ctx["lon"], size_km=ctx["size_km"],
             before_ts=before_actual or ctx["before_ts"],
             after_ts=after_actual  or ctx["after_ts"],
@@ -1004,7 +1014,62 @@ def _load_fireedge_hf_cases() -> list[dict[str, Any]]:
     return out
 
 
-DM3_CASES: list[dict[str, Any]] = _load_dm3_cases() + _load_negative_cases() + _load_hard_negative_cases() + _load_ems_cases() + _load_volcanic_cases() + _load_deforestation_cases() + _load_algal_bloom_cases() + _load_fireedge_hf_cases()
+def _load_fireguard_precursor_cases() -> list[dict[str, Any]]:
+    """Load YujiYamaguchi/fireguard-sentinel2-wildfire-precursor (config=pair14_7).
+    Each case carries the two `sentinel_datetimes` (T-14, T-7) as
+    before_date / after_date so a window=1 SimSat fetch on both sides
+    reproduces the exact training-time S2 pair.
+    """
+    path = APP_DIR.parent / "data" / "metadata" / "disaster_m3" / "fireguard_precursor_cases.yaml"
+    if not path.exists():
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+    except Exception as e:
+        print(f"[startup] WARN: failed to load fireguard_precursor_cases.yaml: {e}")
+        return []
+    raw_cases = doc.get("cases", []) if isinstance(doc, dict) else []
+    out: list[dict[str, Any]] = []
+    for r in raw_cases:
+        try:
+            lat = float(r["lat"]); lon = float(r["lon"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        size_km     = float(r.get("size_km", 5.0))
+        before_date = r["before_date"]   # full ISO of T-14 frame
+        after_date  = r["after_date"]    # full ISO of T-7 frame
+        label_str   = r.get("label") or r.get("event_type") or "no_change"
+        is_pos      = label_str == "wildfire_precursor"
+        out.append({
+            "id":              r["id"],
+            "source":          "FireGuard_HF",
+            "event":           r["id"],
+            "disaster_type":   "wildfire_precursor" if is_pos else "no_change",
+            "mapped_class":    "wildfire_precursor" if is_pos else "no_change",
+            "expected_action": "submit_to_ground"   if is_pos else "drop",
+            "split":           r.get("precursor_split"),
+            "precursor_source": r.get("precursor_source"),
+            "sentinel_datetimes": r.get("sentinel_datetimes"),
+            "query_date":      r.get("query_date"),
+            "capture_date":    after_date,
+            "after_date":      after_date,
+            "before_date":     before_date,
+            "lat": lat, "lon": lon,
+            "location":        f"FireGuard {r.get('precursor_split')}/{r.get('precursor_source')}",
+            "image":           "",
+            "size_km":         size_km,
+            "window_days":     int(r.get("window_days", 1)),
+            "precise":         False,
+            "is_precursor":    True,
+            "is_negative":     not is_pos,
+            "negative_type":   None if is_pos else r.get("precursor_source"),
+            "frp":             r.get("frp"),
+        })
+    return out
+
+
+DM3_CASES: list[dict[str, Any]] = _load_dm3_cases() + _load_negative_cases() + _load_hard_negative_cases() + _load_ems_cases() + _load_volcanic_cases() + _load_deforestation_cases() + _load_algal_bloom_cases() + _load_fireedge_hf_cases() + _load_fireguard_precursor_cases()
 _n_pos = sum(1 for c in DM3_CASES if not any(c.get(f) for f in ("is_negative","is_ems","is_volcanic","is_deforestation","is_algal_bloom")))
 _n_neg     = sum(1 for c in DM3_CASES if c.get("is_negative") and not c.get("is_hard_negative"))
 _n_hardneg = sum(1 for c in DM3_CASES if c.get("is_hard_negative"))
@@ -1013,7 +1078,8 @@ _n_vol = sum(1 for c in DM3_CASES if c.get("is_volcanic"))
 _n_def = sum(1 for c in DM3_CASES if c.get("is_deforestation"))
 _n_hab = sum(1 for c in DM3_CASES if c.get("is_algal_bloom"))
 _n_fe  = sum(1 for c in DM3_CASES if c.get("is_fireedge"))
-print(f"[startup] DisasterM3 cases loaded: {len(DM3_CASES)} (positive/neutral={_n_pos}, negative={_n_neg}, hard_negative={_n_hardneg}, ems={_n_ems}, volcanic={_n_vol}, deforestation={_n_def}, hab={_n_hab}, fireedge={_n_fe})")
+_n_pre = sum(1 for c in DM3_CASES if c.get("is_precursor"))
+print(f"[startup] DisasterM3 cases loaded: {len(DM3_CASES)} (positive/neutral={_n_pos}, negative={_n_neg}, hard_negative={_n_hardneg}, ems={_n_ems}, volcanic={_n_vol}, deforestation={_n_def}, hab={_n_hab}, fireedge={_n_fe}, precursor={_n_pre})")
 
 
 def _load_scene_catalog() -> list[dict[str, Any]]:

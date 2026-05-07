@@ -16,6 +16,18 @@
 #                          LiquidAI/LFM2.5-VL-450M  → models/wildfire-staging/base
 #                          YujiYamaguchi/lfm2-5-vl-450m-wildfire → models/wildfire-staging/adapter)
 #
+#   WILDFIRE_PRECURSOR_BASE_DIR
+#                         Host path to the LFM2.5-VL-450M base dir for the
+#                         precursor service. Default points back at
+#                         WILDFIRE_MODEL_DIR's base subdir so the base is
+#                         only mounted, not duplicated:
+#                         Default: ./models/wildfire-staging/base
+#
+#   WILDFIRE_PRECURSOR_ADAPTER_DIR
+#                         Host path to the wildfire-precursor LoRA adapter
+#                         (YujiYamaguchi/lfm2-5-vl-450m-wildfire-precursor-pair14_7).
+#                         Default: ./models/wildfire-precursor-staging/adapter
+#
 #   LFM2_AGENT_MODEL_DIR  Host path to the LFM2.5-VL-450M-sft-grpo
 #                         checkpoint.
 #                         Default: ./models/LFM2.5-VL-450M-sft-grpo
@@ -56,6 +68,42 @@ services:
       LFM_DEVICE:      cuda
     volumes:
       - "${WILDFIRE_MODEL_DIR:-./models/wildfire-staging}:/models:ro"
+      - "${HF_CACHE_DIR:-${HOME}/.cache/huggingface}:/cache/huggingface"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Same image as lfm-wildfire (transformers+peft serving), different
+  # adapter mount + port. The wildfire-precursor LoRA expects two false
+  # color frames (T-14d, T-7d) and outputs {"risk_level":"HIGH"|"LOW"};
+  # see scripts/eval_wildfire_precursor_hf{,_simsat}.py.
+  #
+  # Base + adapter are mounted as two separate volumes (instead of one
+  # parent dir like lfm-wildfire) so the base can be shared with the
+  # wildfire service without duplicating it on disk.
+  lfm-precursor:
+    build:
+      context: ./services/wildfire
+      dockerfile: Dockerfile
+      args:
+        UPGRADE_LIBS: "1"
+    image: satelliteagent/wildfire:newpeft
+    container_name: lfm-precursor
+    restart: unless-stopped
+    ports:
+      - "8089:8000"
+    environment:
+      LFM_BASE_DIR:    /models/base
+      LFM_ADAPTER_DIR: /models/adapter
+      LFM_MODEL_NAME:  lfm2.5-vl-450m-wildfire-precursor
+      LFM_DEVICE:      cuda
+    volumes:
+      - "${WILDFIRE_PRECURSOR_BASE_DIR:-./models/wildfire-staging/base}:/models/base:ro"
+      - "${WILDFIRE_PRECURSOR_ADAPTER_DIR:-./models/wildfire-precursor-staging/adapter}:/models/adapter:ro"
       - "${HF_CACHE_DIR:-${HOME}/.cache/huggingface}:/cache/huggingface"
     deploy:
       resources:

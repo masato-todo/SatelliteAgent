@@ -16,14 +16,15 @@ export async function loadDM3Cases() {
 
     const cases = data.cases || [];
     const fireedgeCases      = cases.filter(c => c.source === "FireEdge_HF");
+    const precursorCases     = cases.filter(c => c.source === "FireGuard_HF");
     const hardNegCases       = cases.filter(c => c.is_hard_negative);
-    const negativeCases      = cases.filter(c => c.is_negative && !c.is_hard_negative && c.source !== "FireEdge_HF");
+    const negativeCases      = cases.filter(c => c.is_negative && !c.is_hard_negative && c.source !== "FireEdge_HF" && c.source !== "FireGuard_HF");
     const volcanicCases      = cases.filter(c => c.source === "GDACS_VO");
     const deforestationCases = cases.filter(c => c.source === "PRODES");
     const habCases           = cases.filter(c => c.source === "HAB");
     const emsCases           = cases.filter(c => c.source === "EMS");
     const catalogCases       = cases.filter(c => c.source === "MCD64A1");
-    const otherSrc = c => !["MCD64A1","EMS","GDACS_VO","PRODES","HAB","HARD_NEG","FireEdge_HF"].includes(c.source);
+    const otherSrc = c => !["MCD64A1","EMS","GDACS_VO","PRODES","HAB","HARD_NEG","FireEdge_HF","FireGuard_HF"].includes(c.source);
     const preciseCases  = cases.filter(c => c.precise && !c.is_negative && otherSrc(c));
     const coarseCases   = cases.filter(c => !c.precise && !c.is_negative && otherSrc(c));
 
@@ -83,6 +84,12 @@ export async function loadDM3Cases() {
       grpFE.label = "🔥 FireEdge GT — YujiYamaguchi/fireedge-sentinel2-wildfire (HF, 300 cases)";
       fireedgeCases.forEach(c => grpFE.appendChild(makeOption(c, cases.indexOf(c))));
       sel.appendChild(grpFE);
+    }
+    if (precursorCases.length) {
+      const grpPC = document.createElement("optgroup");
+      grpPC.label = `🌱 FireGuard precursor — YujiYamaguchi/fireguard-sentinel2-wildfire-precursor pair14_7 (HF, ${precursorCases.length} cases, T-14d/T-7d)`;
+      precursorCases.forEach(c => grpPC.appendChild(makeOption(c, cases.indexOf(c))));
+      sel.appendChild(grpPC);
     }
     if (habCases.length) {
       const grpH = document.createElement("optgroup");
@@ -169,6 +176,10 @@ export function onDM3Change() {
   // the window=1 + ISO-timestamp trick.
   const feBtn = $("fetch-fireedge-btn");
   if (feBtn) feBtn.style.display = (c.source === "FireEdge_HF") ? "" : "none";
+  // FireGuard precursor cases carry a pair of sentinel_datetimes (T-14, T-7) —
+  // surface a dedicated fetch button that pins both with window=1.
+  const fgBtn = $("fetch-fireguard-btn");
+  if (fgBtn) fgBtn.style.display = (c.source === "FireGuard_HF") ? "" : "none";
 
   const lines = [];
   const precisionTag = c.precise
@@ -274,6 +285,8 @@ function setFetching(isFetching) {
   $("run-btn").disabled = isFetching;
   const fe = $("fetch-fireedge-btn");
   if (fe) fe.disabled = isFetching;
+  const fg = $("fetch-fireguard-btn");
+  if (fg) fg.disabled = isFetching;
 }
 
 export async function saveCurrentPair() {
@@ -397,6 +410,35 @@ export async function fetchImages() {
     window_days: parseInt($("window_days").value, 10),
   };
   await _fetchImagesWithPayload(payload, "Fetching...");
+}
+
+// FireGuard precursor cases pin both T-14d (Before) and T-7d (After) STAC
+// items by their full ISO timestamps with window=1d on each side, mirroring
+// scripts/eval_wildfire_precursor_hf_simsat.py.
+export async function fetchImagesFireGuard() {
+  const c = state.dm3;
+  if (!c || c.source !== "FireGuard_HF") {
+    setStatus("Select a FireGuard precursor case first.");
+    return;
+  }
+  const sdts = c.sentinel_datetimes || [];
+  if (sdts.length < 2) {
+    setStatus("This FireGuard case is missing sentinel_datetimes — cannot pin training pair.");
+    return;
+  }
+  const payload = {
+    lat:  parseFloat($("lat").value),
+    lon:  parseFloat($("lon").value),
+    before_date:        sdts[0],   // T-14d full ISO
+    after_date:         sdts[1],   // T-7d  full ISO
+    size_km:            parseFloat($("size_km").value),
+    window_days:        1,         // After: tight pin
+    before_window_days: 1,         // Before: tight pin too (override standard form)
+  };
+  await _fetchImagesWithPayload(
+    payload,
+    `Fetching FireGuard pair (Before=${sdts[0]} ±1d, After=${sdts[1]} ±1d)...`
+  );
 }
 
 // FireEdge cases pin a specific S2 STAC item by sentinel_datetime (full ISO).

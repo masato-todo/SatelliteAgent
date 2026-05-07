@@ -4,7 +4,8 @@ import { state, $, setStatus, updateBudget, BUDGET_MAX } from "./state-utils.js"
 import { initMaps, setImage, setMapLabel, resetMapsToOriginal,
          loadDamageOverlay, clearDamageOverlay, toggleDrawMode, clearDrawnBbox } from "./maps.js";
 import { loadDM3Cases, onDM3Change, loadTemplates, fetchImages, fetchImagesFireEdge,
-         useCachedPair, saveCurrentPair, searchBeforeCandidates, searchAfterCandidates,
+         fetchImagesFireGuard, useCachedPair, saveCurrentPair,
+         searchBeforeCandidates, searchAfterCandidates,
          geocodeSearch } from "./dm3-fetch.js";
 import { runTool, setToolsStatus } from "./tools.js";
 import { initProviders, openSettings, closeSettings } from "./providers.js";
@@ -95,6 +96,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   $("fetch-btn").addEventListener("click", fetchImages);
   $("fetch-fireedge-btn").addEventListener("click", fetchImagesFireEdge);
+  $("fetch-fireguard-btn").addEventListener("click", fetchImagesFireGuard);
   $("save-pair-btn").addEventListener("click", saveCurrentPair);
   $("cache-use-btn").addEventListener("click", useCachedPair);
   $("trace-clear-btn").addEventListener("click", () => {
