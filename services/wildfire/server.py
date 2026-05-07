@@ -42,8 +42,16 @@ STATE: dict[str, Any] = {}
 
 
 def _load() -> None:
-    print(f"[lfm-serve] loading processor from {BASE_DIR}", flush=True)
-    processor = AutoProcessor.from_pretrained(BASE_DIR, trust_remote_code=True)
+    # Prefer the processor packaged with the adapter — it carries the
+    # exact image_processor_type the LoRA was fine-tuned with.
+    # The base model's processor uses Lfm2VlImageProcessorFast (cosmetic
+    # speedup), but our LoRAs were trained with the slow
+    # Lfm2VlImageProcessor; mixing them silently shifts image
+    # preprocessing and the model output collapses (all "HIGH" / similar).
+    proc_dir = ADAPTER_DIR if os.path.exists(os.path.join(ADAPTER_DIR, "processor_config.json")) else BASE_DIR
+    print(f"[lfm-serve] loading processor from {proc_dir}", flush=True)
+    processor = AutoProcessor.from_pretrained(proc_dir, trust_remote_code=True)
+    print(f"[lfm-serve]   image_processor: {type(processor.image_processor).__name__}", flush=True)
     print(f"[lfm-serve] loading base model on {DEVICE} ({DTYPE})", flush=True)
     base = AutoModelForImageTextToText.from_pretrained(
         BASE_DIR, trust_remote_code=True, dtype=DTYPE,

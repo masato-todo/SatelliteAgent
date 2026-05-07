@@ -10,6 +10,19 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir fastapi 'uvicorn[standard]'
 
+# The base image ships transformers 5.5.x / peft 0.18.x — these match what
+# the wildfire LoRA was fine-tuned with (recall=0.933 reproducible).
+# The wildfire-precursor LoRA, however, needs transformers >=5.7 and
+# peft >=0.19 to apply correctly (with the older versions it collapses
+# to "always HIGH"). Set UPGRADE_LIBS=1 at build time when serving the
+# precursor adapter to install the newer versions on top.
+ARG UPGRADE_LIBS=0
+RUN if [ "$UPGRADE_LIBS" = "1" ]; then \
+        pip install --no-cache-dir --upgrade \
+            "transformers>=5.7,<5.8" \
+            "peft>=0.19,<0.20"; \
+    fi
+
 COPY server.py /app/server.py
 
 EXPOSE 8000

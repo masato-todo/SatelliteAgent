@@ -183,10 +183,22 @@ def detect_wildfire(which: str = "after") -> dict[str, Any]:
     }
 
 
+def predict_wildfire(**_ignored) -> dict[str, Any]:
+    """STUB: pre-fire vegetation drying detection. The real impl
+    (tools.wildfire_precursor.make_predict_wildfire) is bound per-request
+    when a SimSat context is available."""
+    return {
+        "risk_level": "LOW",
+        "is_high_risk": False,
+        "description": "stub (no SimSat context)",
+    }
+
+
 STUB_TOOLS: dict[str, Callable[..., Any]] = {
     "classify_change": classify_change,
     "fetch_band": fetch_band,
     "detect_wildfire": detect_wildfire,
+    "predict_wildfire": predict_wildfire,
     "zoom_in": zoom_in,
     "get_region_info": get_region_info,
     "get_history": get_history,

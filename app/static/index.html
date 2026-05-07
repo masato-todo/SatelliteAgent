@@ -91,6 +91,7 @@
     <div class="buttons">
       <button id="fetch-btn">Fetch Images</button>
       <button id="fetch-fireedge-btn" style="display:none;" title="Pin the exact Sentinel-2 frame the FireEdge LoRA was trained on: sends sentinel_datetime as the After timestamp with window=1d.">🔥 Fetch FireEdge frame</button>
+      <button id="fetch-fireguard-btn" style="display:none;" title="Pin the exact T-14d / T-7d Sentinel-2 pair the FireGuard precursor LoRA was trained on (window=1d on both sides).">🌱 Fetch FireGuard pair</button>
       <button id="save-pair-btn" title="Persist the currently displayed Before/After as the canonical pair for this scene">Save Before/After</button>
       <select id="cache-pair-select" style="display:none;"></select>
       <button id="cache-use-btn" style="display:none;">Use cache</button>
@@ -133,6 +134,7 @@
           <button class="tool-btn" data-tool="get_change_stats" title="Computes ALL spectral index deltas (NBR/NDVI/MNDWI/NDBI) and returns mean/median/std/min/max/percentiles + strong↓↑ fractions. Pure data — agent decides class.">get_change_stats</button>
           <button class="tool-btn" data-tool="classify_change" title="VLM-based: uses the provider+model selected above.">classify_change (VLM)</button>
           <button class="tool-btn" data-tool="detect_wildfire" title="Single-image wildfire detector (LFM2.5-VL-450M-wildfire LoRA via :8085). Builds SWIR22-SWIR16-NIR false-color of the AFTER pass and asks the FireEdge model.">detect_wildfire 🔥</button>
+          <button class="tool-btn" data-tool="predict_wildfire" title="Pre-fire vegetation-drying detector (LFM2.5-VL-450M-wildfire-precursor LoRA via :8089). Builds SWIR22-NIR8A-SWIR16 pair from Before (T-14d) and After (T-7d) and asks the FireGuard model. Returns HIGH or LOW risk.">predict_wildfire 🌱</button>
           <button class="tool-btn" data-tool="get_region_info">get_region_info</button>
         </div>
       </div>
@@ -296,6 +298,6 @@
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script type="module" src="/static/js/main.js?v=2026050606"></script>
+<script type="module" src="/static/js/main.js?v=2026050702"></script>
 </body>
 </html>
